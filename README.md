@@ -84,97 +84,97 @@ SecureMedi/
 ```bash
 git clone https://github.com/Salvatar123/SecureMedi.git
 cd SecureMedi
+'''
 
 2️⃣ Install Dependencies
 
+'''bash
 pip install -r requirements.txt
+'''
 
 ▶️ How to Run the Project
+
 Step 1: Start Ganache (Blockchain Network)
 
 Open Ganache
-
 Click Quickstart Ethereum
-
 Keep it running
-
 Confirm RPC URL:
 
+'''bash
 http://127.0.0.1:7545
+'''
 
 Step 2: Deploy Smart Contract (Using Remix)
 
 This step must be repeated whenever Ganache is restarted.
-
 Open https://remix.ethereum.org
-
 Connect Environment → Custom Provider
-
 Enter:
 
+'''bash
 http://127.0.0.1:7545
-
+'''
 
 Compile contract (Solidity 0.8.17, EVM: Istanbul)
-
 Deploy contract
 
 Copy:
-
-Contract Address
-
-ABI
+1) Contract Address
+2) ABI
 
 Save ABI in:
 
+'''bash
 contracts/abi.json
-
+'''
 
 Update contract address in:
 
+'''bash
 blockchain/connector.py
-
+'''
 
 Authorize device:
 
+'''bash
 addDevice(your_account_address)
+'''
 
 Step 3: Run Main System
 
 In project root:
 
+'''bash
 python main.py
-
+'''
 
 Expected output:
 
+'''bash
 secureMedi System Started...
 Vitals: {...}
 Status: NORMAL / ALERT
+'''
 
 Step 4: Run Dashboard
 
 Open a new terminal:
 
+'''bash
 streamlit run dashboard/app.py
-
+'''
 
 Dashboard will open in browser.
 
 🎬 Demo Flow (Recommended)
 
 Start Ganache
-
 Deploy smart contract
-
 Run main.py
-
 Run dashboard
-
 Trigger alert
-
 Show transaction in Ganache
-
 Stop using Ctrl + C
 
 📊 Output
@@ -182,27 +182,18 @@ Stop using Ctrl + C
 The system provides:
 
 Live vital statistics
-
 Alert notifications
-
 Blockchain transaction hashes
-
 Interactive dashboard graphs
-
 Secure medical record storage
 
 🔮 Future Scope
 
 Integration with real IoT medical devices
-
 Cloud-based deployment
-
 Mobile application
-
 Advanced machine learning models
-
 Multi-hospital network
-
 Public blockchain integration
 
 📈 Impact
@@ -210,11 +201,7 @@ Public blockchain integration
 secureMedi enables:
 
 Faster emergency response
-
 Improved data security
-
 Enhanced patient trust
-
 Transparent medical systems
-
 Scalable healthcare infrastructure
