@@ -5,7 +5,7 @@ from edge_ai.sensor import generate_data
 from edge_ai.detector import detect
 
 # Local logger
-from logs.logger import save
+from logger import save
 
 # Blockchain
 from blockchain.connector import send_record
