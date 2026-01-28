@@ -59,7 +59,7 @@ Sensors → Edge AI → Blockchain → Dashboard
 ---
 
 ## 📁 Project Structure
-
+ ```
 SecureMedi/
 │
 ├── blockchain/
@@ -73,7 +73,7 @@ SecureMedi/
 ├── main.py
 ├── requirements.txt
 └── README.md
-
+```
 
 ---
 
