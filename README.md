@@ -84,37 +84,37 @@ SecureMedi/
 ```bash
 git clone https://github.com/Salvatar123/SecureMedi.git
 cd SecureMedi
-'''
+```
 
-2️⃣ Install Dependencies
+### 2️⃣ Install Dependencies
 
-'''bash
+```bash
 pip install -r requirements.txt
-'''
+```
 
-▶️ How to Run the Project
+### ▶️ How to Run the Project
 
-Step 1: Start Ganache (Blockchain Network)
+#### Step 1: Start Ganache (Blockchain Network)
 
 Open Ganache
 Click Quickstart Ethereum
 Keep it running
 Confirm RPC URL:
 
-'''bash
+```bash
 http://127.0.0.1:7545
-'''
+```
 
-Step 2: Deploy Smart Contract (Using Remix)
+#### Step 2: Deploy Smart Contract (Using Remix)
 
 This step must be repeated whenever Ganache is restarted.
 Open https://remix.ethereum.org
 Connect Environment → Custom Provider
 Enter:
 
-'''bash
+```bash
 http://127.0.0.1:7545
-'''
+```
 
 Compile contract (Solidity 0.8.17, EVM: Istanbul)
 Deploy contract
@@ -125,49 +125,49 @@ Copy:
 
 Save ABI in:
 
-'''bash
+```bash
 contracts/abi.json
-'''
+```
 
 Update contract address in:
 
-'''bash
+```bash
 blockchain/connector.py
-'''
+```
 
 Authorize device:
 
-'''bash
+```bash
 addDevice(your_account_address)
-'''
+```
 
-Step 3: Run Main System
+#### Step 3: Run Main System
 
 In project root:
 
-'''bash
+```bash
 python main.py
-'''
+```
 
 Expected output:
 
-'''bash
+```bash
 secureMedi System Started...
 Vitals: {...}
 Status: NORMAL / ALERT
-'''
+```
 
-Step 4: Run Dashboard
+#### Step 4: Run Dashboard
 
 Open a new terminal:
 
-'''bash
+```bash
 streamlit run dashboard/app.py
-'''
+```
 
 Dashboard will open in browser.
 
-🎬 Demo Flow (Recommended)
+### 🎬 Demo Flow (Recommended)
 
 Start Ganache
 Deploy smart contract
@@ -177,31 +177,31 @@ Trigger alert
 Show transaction in Ganache
 Stop using Ctrl + C
 
-📊 Output
+### 📊 Output
 
 The system provides:
 
-Live vital statistics
-Alert notifications
-Blockchain transaction hashes
-Interactive dashboard graphs
-Secure medical record storage
+- Live vital statistics
+- Alert notifications
+- Blockchain transaction hashes
+- Interactive dashboard graphs
+- Secure medical record storage
 
-🔮 Future Scope
+### 🔮 Future Scope
 
-Integration with real IoT medical devices
-Cloud-based deployment
-Mobile application
-Advanced machine learning models
-Multi-hospital network
-Public blockchain integration
+- Integration with real IoT medical devices
+- Cloud-based deployment
+- Mobile application
+- Advanced machine learning models
+- Multi-hospital network
+- Public blockchain integration
 
-📈 Impact
+### 📈 Impact
 
 secureMedi enables:
 
-Faster emergency response
-Improved data security
-Enhanced patient trust
-Transparent medical systems
-Scalable healthcare infrastructure
+- Faster emergency response
+- Improved data security
+- Enhanced patient trust
+- Transparent medical systems
+- Scalable healthcare infrastructure
