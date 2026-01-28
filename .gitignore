@@ -1,4 +1,6 @@
 __pycache__/
-logs/data.csv
 .env
 *.pyc
+
+logs/*.csv
+logs/*.log
