@@ -1,41 +1,5 @@
 [
 	{
-		"inputs": [
-			{
-				"internalType": "address",
-				"name": "_device",
-				"type": "address"
-			}
-		],
-		"name": "addDevice",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "string",
-				"name": "_patientId",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "_vitals",
-				"type": "string"
-			},
-			{
-				"internalType": "string",
-				"name": "_status",
-				"type": "string"
-			}
-		],
-		"name": "addRecord",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
 		"inputs": [],
 		"stateMutability": "nonpayable",
 		"type": "constructor"
@@ -61,7 +25,95 @@
 				"type": "address"
 			}
 		],
-		"name": "authorizedDevices",
+		"name": "emergencyAccess",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "generateEmergencyAccess",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "generateKey",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "patientId",
+				"type": "string"
+			}
+		],
+		"name": "getAccessLogs",
+		"outputs": [
+			{
+				"internalType": "address[]",
+				"name": "",
+				"type": "address[]"
+			},
+			{
+				"internalType": "uint256[]",
+				"name": "",
+				"type": "uint256[]"
+			},
+			{
+				"internalType": "bool[]",
+				"name": "",
+				"type": "bool[]"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getAdmin",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getMyKey",
+		"outputs": [
+			{
+				"internalType": "bytes32",
+				"name": "",
+				"type": "bytes32"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			}
+		],
+		"name": "hasEmergencyAccess",
 		"outputs": [
 			{
 				"internalType": "bool",
@@ -73,13 +125,19 @@
 		"type": "function"
 	},
 	{
-		"inputs": [],
-		"name": "getCount",
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "isDoctor",
 		"outputs": [
 			{
-				"internalType": "uint256",
+				"internalType": "bool",
 				"name": "",
-				"type": "uint256"
+				"type": "bool"
 			}
 		],
 		"stateMutability": "view",
@@ -88,32 +146,85 @@
 	{
 		"inputs": [
 			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
+				"internalType": "string",
+				"name": "patientId",
+				"type": "string"
 			}
 		],
-		"name": "records",
+		"name": "isPatientRegistered",
 		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "patientId",
+				"type": "string"
+			}
+		],
+		"name": "logAccess",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "doctor",
+				"type": "address"
+			}
+		],
+		"name": "registerDoctor",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
 			{
 				"internalType": "string",
 				"name": "patientId",
 				"type": "string"
 			},
 			{
-				"internalType": "string",
-				"name": "vitals",
-				"type": "string"
+				"internalType": "address",
+				"name": "wallet",
+				"type": "address"
+			}
+		],
+		"name": "registerPatient",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
 			},
 			{
-				"internalType": "string",
-				"name": "status",
-				"type": "string"
-			},
+				"internalType": "bytes32",
+				"name": "key",
+				"type": "bytes32"
+			}
+		],
+		"name": "verifyKey",
+		"outputs": [
 			{
-				"internalType": "uint256",
-				"name": "timestamp",
-				"type": "uint256"
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
 			}
 		],
 		"stateMutability": "view",
