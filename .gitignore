@@ -51,3 +51,27 @@ temp/
 
 # Node (if using any Node tools)
 node_modules/
+
+# Blockchain
+.ganache/
+ganache-db/
+contracts/build/
+artifacts/
+
+# Health/Medical Data (sensitive)
+*.csv
+data/
+exports/
+
+# Database files (if you add SQLite later)
+*.db
+*.sqlite
+*.sqlite3
+
+# Jupyter/Notebooks (if you use them)
+.ipynb_checkpoints/
+*.ipynb
+
+# Pandas/Data Science
+.dask/
+dask-worker-space/
