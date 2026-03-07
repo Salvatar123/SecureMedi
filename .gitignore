@@ -1,6 +1,53 @@
+# Python
 __pycache__/
-.env
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
 
+# Virtual environments
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables & secrets
+.env
+.env.local
+config/production.env
+config/.env
+
+# Streamlit
+.streamlit/secrets.toml
+.streamlit/
+.streamlit/logger.log
+
+# Logs
 logs/*.csv
 logs/*.log
+*.log
+
+# Temporary
+*.tmp
+tmp/
+temp/
+.cache/
+
+# Node (if using any Node tools)
+node_modules/
