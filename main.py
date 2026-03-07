@@ -1,6 +1,7 @@
 import time
 
 # Edge AI
+from dashboard import patient
 from edge_ai.sensor import generate_data
 from edge_ai.detector import detect
 
@@ -8,7 +9,7 @@ from edge_ai.detector import detect
 from logger import save
 
 # Blockchain
-from blockchain.connector import send_record
+from blockchain.connector import log_access
 
 
 def main():
@@ -36,11 +37,8 @@ def main():
             if status == "ALERT":
 
                 try:
-                    tx = send_record(
-                        "P001",
-                        str(data),
-                        status
-                    )
+                    patient_id = "P001"
+                    tx = log_access(patient_id)
 
                     print("✅ Stored on Blockchain")
                     print("TX Hash:", tx)
