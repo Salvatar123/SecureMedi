@@ -1,21 +1,22 @@
-import streamlit as st
-import sys
-import os
 import logging
-from typing import Optional, cast
+import os
+import sys
+from typing import Optional
+
+import streamlit as st
 
 # Configuration and Services
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config.settings import get_settings
-from services.blockchain_service import BlockchainService
-from services.logger_service import LoggerService
-from utils.validators import (
+from config.settings import get_settings  # noqa: E402
+from services.blockchain_service import BlockchainService  # noqa: E402
+from services.logger_service import LoggerService  # noqa: E402
+from utils.validators import (  # noqa: E402
     validate_eth_address,
     validate_patient_id,
     validate_private_key,
 )
-from utils.dashboard_helpers import show_report, display_access_logs
+from utils.dashboard_helpers import show_report, display_access_logs  # noqa: E402
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -68,9 +69,7 @@ if "patient_id" not in st.session_state:
 
 st.sidebar.title("🔐 secureMedi Portal")
 
-page = st.sidebar.radio(
-    "Navigate", ["Login", "Doctor Panel", "Patient Portal"], key="main_nav"
-)
+page = st.sidebar.radio("Navigate", ["Login", "Doctor Panel", "Patient Portal"], key="main_nav")
 
 
 # =====================================================
@@ -304,9 +303,7 @@ if page == "Patient Portal":
         assert blockchain_service is not None
 
         try:
-            doctors, times, emergencies = blockchain_service.get_access_logs_as_patient(
-                pid, pkey
-            )
+            doctors, times, emergencies = blockchain_service.get_access_logs_as_patient(pid, pkey)
 
             st.success("Report Loaded ✅")
             show_report(pid)

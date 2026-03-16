@@ -3,7 +3,7 @@ Tests for input validators - Ensures data integrity and security.
 Tests Ethereum addresses, private keys, patient IDs, and health data.
 """
 
-import pytest
+
 from utils.validators import (
     validate_eth_address,
     validate_private_key,
@@ -55,7 +55,7 @@ class TestValidateEthAddress:
         """Test addresses work with different cases."""
         addr_lower = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd"
         addr_upper = "0xABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD"
-        
+
         # Both should be valid (Ethereum addresses are hex)
         assert validate_eth_address(addr_lower)
         assert validate_eth_address(addr_upper)
@@ -76,7 +76,9 @@ class TestValidatePrivateKey:
 
     def test_private_key_missing_0x_prefix(self):
         """Test private key without 0x prefix fails."""
-        assert not validate_private_key("4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51")
+        assert not validate_private_key(
+            "4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51"
+        )
 
     def test_private_key_too_short(self):
         """Test private key shorter than 66 characters fails."""
@@ -88,7 +90,9 @@ class TestValidatePrivateKey:
 
     def test_private_key_with_invalid_hex(self):
         """Test private key with non-hex characters fails."""
-        assert not validate_private_key("0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ")
+        assert not validate_private_key(
+            "0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ"
+        )
 
     def test_private_key_not_string(self):
         """Test non-string private key fails."""
@@ -154,11 +158,11 @@ class TestValidateHealthData:
         # Missing heart rate
         data = {"temp": 37.0, "spo2": 98}
         assert not validate_health_data(data)
-        
+
         # Missing temperature
         data = {"heart": 75, "spo2": 98}
         assert not validate_health_data(data)
-        
+
         # Missing SpO2
         data = {"heart": 75, "temp": 37.0}
         assert not validate_health_data(data)
@@ -203,19 +207,14 @@ class TestValidateHealthData:
 
     def test_health_data_extra_fields(self):
         """Test data with extra/unknown fields."""
-        data = {
-            "heart": 75,
-            "temp": 37.0,
-            "spo2": 98,
-            "extra_field": "should be ignored"
-        }
+        data = {"heart": 75, "temp": 37.0, "spo2": 98, "extra_field": "should be ignored"}
         assert validate_health_data(data)
 
     def test_health_data_reasonable_ranges(self):
         """Test data with values in reasonable ranges."""
         data = {"heart": 60, "temp": 36.5, "spo2": 95}
         assert validate_health_data(data)
-        
+
         data = {"heart": 100, "temp": 38.0, "spo2": 99}
         assert validate_health_data(data)
 
@@ -225,7 +224,7 @@ class TestValidateHealthData:
         data = {"heart": 40, "temp": 35.0, "spo2": 80}
         result = validate_health_data(data)
         assert isinstance(result, bool)
-        
+
         # High but reasonable
         data = {"heart": 150, "temp": 40.0, "spo2": 100}
         result = validate_health_data(data)

@@ -3,7 +3,7 @@ Tests for DetectorService - Anomaly detection in health vitals.
 Tests threshold logic, boundary conditions, and dynamic threshold updates.
 """
 
-import pytest
+
 from services.detector_service import DetectorService
 
 
@@ -13,7 +13,7 @@ class TestDetectorServiceThresholds:
     def test_default_thresholds(self):
         """Test detector initializes with default thresholds."""
         detector = DetectorService()
-        
+
         thresholds = detector.get_thresholds()
         assert thresholds["heart_rate_max"] == 110
         assert thresholds["temperature_max"] == 38.0
@@ -21,12 +21,8 @@ class TestDetectorServiceThresholds:
 
     def test_custom_thresholds(self):
         """Test detector accepts custom thresholds."""
-        detector = DetectorService(
-            heart_rate_max=120,
-            temperature_max=39.0,
-            spo2_min=90
-        )
-        
+        detector = DetectorService(heart_rate_max=120, temperature_max=39.0, spo2_min=90)
+
         thresholds = detector.get_thresholds()
         assert thresholds["heart_rate_max"] == 120
         assert thresholds["temperature_max"] == 39.0
@@ -35,13 +31,9 @@ class TestDetectorServiceThresholds:
     def test_update_thresholds(self):
         """Test runtime threshold updates."""
         detector = DetectorService()
-        
-        detector.update_thresholds(
-            heart_rate_max=125,
-            temperature_max=39.5,
-            spo2_min=88
-        )
-        
+
+        detector.update_thresholds(heart_rate_max=125, temperature_max=39.5, spo2_min=88)
+
         thresholds = detector.get_thresholds()
         assert thresholds["heart_rate_max"] == 125
         assert thresholds["temperature_max"] == 39.5
@@ -51,9 +43,9 @@ class TestDetectorServiceThresholds:
         """Test updating only some thresholds."""
         detector = DetectorService()
         prev_hr = detector.heart_rate_max
-        
+
         detector.update_thresholds(temperature_max=39.0)
-        
+
         # Only temp should change
         assert detector.heart_rate_max == prev_hr
         assert detector.temperature_max == 39.0
@@ -197,12 +189,8 @@ class TestDetectorWithCustomThresholds:
 
     def test_strict_thresholds(self):
         """Test detection with strict thresholds."""
-        detector = DetectorService(
-            heart_rate_max=60,
-            temperature_max=37.0,
-            spo2_min=95
-        )
-        
+        detector = DetectorService(heart_rate_max=60, temperature_max=37.0, spo2_min=95)
+
         # Normal vitals would be ALERT with strict thresholds
         data = {"heart": 75, "temp": 37.2, "spo2": 94}
         result = detector.detect(data)
@@ -210,12 +198,8 @@ class TestDetectorWithCustomThresholds:
 
     def test_loose_thresholds(self):
         """Test detection with loose thresholds."""
-        detector = DetectorService(
-            heart_rate_max=150,
-            temperature_max=40.0,
-            spo2_min=80
-        )
-        
+        detector = DetectorService(heart_rate_max=150, temperature_max=40.0, spo2_min=80)
+
         # High vitals would be NORMAL with loose thresholds
         data = {"heart": 140, "temp": 39.5, "spo2": 85}
         result = detector.detect(data)
@@ -224,15 +208,15 @@ class TestDetectorWithCustomThresholds:
     def test_threshold_priority(self):
         """Test that any threshold violation triggers ALERT."""
         detector = DetectorService()
-        
+
         # Only heart rate is violated
         data1 = {"heart": 115, "temp": 37.0, "spo2": 98}
         assert detector.detect(data1) == "ALERT"
-        
+
         # Only temperature is violated
         data2 = {"heart": 70, "temp": 38.5, "spo2": 98}
         assert detector.detect(data2) == "ALERT"
-        
+
         # Only SpO2 is violated
         data3 = {"heart": 70, "temp": 37.0, "spo2": 90}
         assert detector.detect(data3) == "ALERT"

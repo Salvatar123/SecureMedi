@@ -7,15 +7,8 @@ Tests end-to-end workflows including:
 - Error recovery and edge cases
 """
 
-import pytest
-from datetime import datetime
-
 from services.detector_service import DetectorService
-from services.logger_service import LoggerService
-from services.blockchain_service import BlockchainService
 from utils.validators import validate_eth_address, validate_private_key
-from utils.error_handler import SecureMediException
-
 
 # ======================================================================================
 # INTEGRATION: Sensor → Detector → Logger → Blockchain (Normal Flow)
@@ -69,8 +62,7 @@ class TestFullDataFlowNormal:
     def test_sequential_normal_readings(self, mock_blockchain_service, logger_service):
         """Test multiple sequential normal readings accumulate correctly."""
         detector = DetectorService()
-        logger = logger_service
-        blockchain = mock_blockchain_service
+        logger_service  # noqa: F841 used for test state
 
         normal_readings = [
             {"heart": 72, "temp": 36.8, "spo2": 99, "patient_id": "P001"},
@@ -82,12 +74,12 @@ class TestFullDataFlowNormal:
             status = detector.detect(reading)
             assert status == "NORMAL"
 
-            logger.save(
+            logger_service.save(
                 data={k: v for k, v in reading.items() if k != "patient_id"},
                 status=status,
             )
 
-        records = logger.get_latest_records(limit=100)
+        records = logger_service.get_latest_records(limit=100)
         assert len(records) >= 3
         assert all(r["status"] == "NORMAL" for r in records[-3:])
 
@@ -238,17 +230,13 @@ class TestDashboardLoginFlow:
         assert is_doctor  # Is a doctor
         assert not key_valid  # But key is invalid
 
-    def test_emergency_access_activation(
-        self, mock_blockchain_service, valid_addresses
-    ):
+    def test_emergency_access_activation(self, mock_blockchain_service, valid_addresses):
         """Test emergency access token generation and usage."""
         blockchain = mock_blockchain_service
 
         # Setup mock
         blockchain.is_doctor.return_value = True
-        blockchain.generate_emergency_access.return_value = (
-            "0x" + "e" * 64
-        )  # Emergency token
+        blockchain.generate_emergency_access.return_value = "0x" + "e" * 64  # Emergency token
 
         doctor_address = valid_addresses[0]
 
@@ -280,18 +268,14 @@ class TestDashboardLoginFlow:
         private_key = valid_private_keys[0]
 
         # Patient retrieves logs
-        doctors, times, emergencies = blockchain.get_access_logs_as_patient(
-            patient_id, private_key
-        )
+        doctors, times, emergencies = blockchain.get_access_logs_as_patient(patient_id, private_key)
 
         assert len(doctors) == 2
         assert len(times) == 2
         assert len(emergencies) == 2
         assert emergencies[1] is True  # Second access was emergency
 
-        blockchain.get_access_logs_as_patient.assert_called_once_with(
-            patient_id, private_key
-        )
+        blockchain.get_access_logs_as_patient.assert_called_once_with(patient_id, private_key)
 
 
 # ======================================================================================
@@ -370,7 +354,7 @@ class TestErrorScenarios:
 
     def test_missing_required_validators(self, mock_blockchain_service):
         """Test missing credentials are caught by validators."""
-        blockchain = mock_blockchain_service
+        mock_blockchain_service  # noqa: F841 mock fixture
 
         # Empty address
         assert not validate_eth_address("")
@@ -390,9 +374,7 @@ class TestErrorScenarios:
 class TestConcurrentProcessing:
     """Integration tests for concurrent patient data processing."""
 
-    def test_multiple_patients_simultaneous_logging(
-        self, mock_blockchain_service, logger_service
-    ):
+    def test_multiple_patients_simultaneous_logging(self, mock_blockchain_service, logger_service):
         """Test multiple patient records logged concurrently without conflicts."""
         logger = logger_service
         detector = DetectorService()
@@ -410,9 +392,7 @@ class TestConcurrentProcessing:
         records = logger.get_latest_records(limit=100)
         assert len(records) >= 3
 
-    def test_alert_priority_in_concurrent_logging(
-        self, mock_blockchain_service, logger_service
-    ):
+    def test_alert_priority_in_concurrent_logging(self, mock_blockchain_service, logger_service):
         """Test alert records are prioritized in concurrent logging."""
         logger = logger_service
         detector = DetectorService()

@@ -355,3 +355,94 @@ secureMedi enables:
 - Enhanced patient trust
 - Transparent medical systems
 - Scalable healthcare infrastructure
+
+---
+
+## 📖 Code Documentation
+
+All public functions and classes include comprehensive docstrings in **Google/NumPy style**.
+
+### Module Structure
+
+Each module includes:
+- Module-level docstring with purpose and usage
+- Class docstrings describing responsibility
+- Function docstrings with Args, Returns, Raises sections
+- Type hints on all function signatures
+
+### Example Docstring
+
+```python
+def detect(self, data: Dict[str, Any]) -> Literal["ALERT", "NORMAL"]:
+    """
+    Detect anomalies in health vitals.
+
+    Args:
+        data: Dictionary with heart, temp, spo2 values
+
+    Returns:
+        "ALERT" if any vital is abnormal, "NORMAL" otherwise
+        
+    Raises:
+        DetectorException: If data validation fails
+    """
+    # Implementation...
+```
+
+### Documentation Files
+
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Cloud deployment, Docker, Kubernetes
+- **[SECURITY.md](SECURITY.md)** — Security best practices, threat mitigation
+- **[PHASE2_SUMMARY.md](PHASE2_SUMMARY.md)** — Test coverage and validation tasks
+- **[PHASE3_SUMMARY.md](PHASE3_SUMMARY.md)** — Security fixes and code quality
+
+---
+
+## 🎯 Code Quality Standards
+
+This project follows best practices for production code:
+
+### Type Hints
+- All functions have complete type hints
+- Validated with `mypy . --strict` (zero errors)
+
+### Code Formatting
+- Formatted with `black` (88-character line length)
+- Linted with `flake8` (zero violations)
+
+### Testing
+- Unit tests in `tests/` directory
+- 126 tests across all services and utilities
+- 70%+ code coverage via `pytest --cov`
+- Test fixtures for all services in `tests/conftest.py`
+
+### Code Organization
+- **services/**: Core business logic (blockchain, logging, detection)
+- **utils/**: Reusable utilities (validators, error handling)
+- **config/**: Configuration management via environment variables
+- **tests/**: Comprehensive test suite with fixtures
+
+---
+
+## 🔐 Security
+
+For security best practices, threat modeling, and incident response procedures, see [SECURITY.md](SECURITY.md).
+
+Key security features:
+- ✅ No hardcoded credentials in source code
+- ✅ Environment-based configuration
+- ✅ Input validation on all user inputs
+- ✅ Thread-safe operations
+- ✅ Comprehensive secrets in `.gitignore`
+- ✅ Session-based authentication for dashboard
+
+---
+
+## 🚀 Deployment
+
+For detailed deployment instructions for local, staging, and production environments, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+Quick deployment options:
+- **Local**: `python main.py` + `streamlit run dashboard/app.py`
+- **Docker**: `docker build -t securemedi:latest . && docker run securemedi:latest`
+- **Docker Compose**: `docker-compose up -d` (includes Ganache + app + dashboard)

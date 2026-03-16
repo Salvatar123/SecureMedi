@@ -1,3 +1,20 @@
+"""
+SecureMedi Main Application Module.
+
+Coordinates sensor data collection, anomaly detection, logging, and blockchain
+integration for a comprehensive health monitoring system.
+
+The SecureMediSystem class manages:
+- Sensor data generation and validation
+- Anomaly detection with configurable thresholds
+- Local CSV logging with thread safety
+- Blockchain integration for alert storage (optional)
+- Graceful shutdown handling
+
+Usage:
+    python main.py
+"""
+
 import time
 import logging
 import signal

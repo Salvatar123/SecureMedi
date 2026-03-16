@@ -50,9 +50,7 @@ def show_report(patient_id: Optional[str] = None) -> None:
         st.error(f"Could not load report: {e}")
 
 
-def display_access_logs(
-    doctors: List[str], times: List[int], emergencies: List[bool]
-) -> None:
+def display_access_logs(doctors: List[str], times: List[int], emergencies: List[bool]) -> None:
     """
     Display patient access history.
 
@@ -71,11 +69,9 @@ def display_access_logs(
             t = datetime.datetime.fromtimestamp(times[i])
             mode = "🚨 Emergency" if emergencies[i] else "✅ Normal"
 
-            st.write(
-                f"""
+            st.write(f"""
 👨‍⚕️ Doctor: `{doctors[i]}`
 ⏰ Time: {t}
 🩺 Mode: {mode}
 ---
-"""
-            )
+""")

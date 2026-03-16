@@ -53,9 +53,7 @@ class LoggerService:
                     writer = csv.writer(f)
 
                     if not file_exists:
-                        writer.writerow(
-                            ["timestamp", "heart", "temp", "spo2", "status"]
-                        )
+                        writer.writerow(["timestamp", "heart", "temp", "spo2", "status"])
                         logger.info("Created new CSV log file")
 
                     timestamp = datetime.now().isoformat()
@@ -69,7 +67,10 @@ class LoggerService:
                         ]
                     )
 
-                logger.debug(f"Logged: {status} - Heart:{data.get('heart')} Temp:{data.get('temp')} SpO2:{data.get('spo2')}")
+                logger.debug(
+                    f"Logged: {status} - Heart:{data.get('heart')} "
+                    f"Temp:{data.get('temp')} SpO2:{data.get('spo2')}"
+                )
 
         except Exception as e:
             logger.error(f"Failed to save log: {e}")

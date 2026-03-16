@@ -51,9 +51,7 @@ class BlockchainService:
                 abi = json.load(f)
 
             # Initialize contract
-            self.contract = self.w3.eth.contract(
-                address=self.settings.CONTRACT_ADDRESS, abi=abi
-            )
+            self.contract = self.w3.eth.contract(address=self.settings.CONTRACT_ADDRESS, abi=abi)
 
             logger.info(f"Contract loaded: {self.settings.CONTRACT_ADDRESS}")
             balance = self.w3.eth.get_balance(self.account)
@@ -103,11 +101,9 @@ class BlockchainService:
                 }
             )
 
-            signed = self.w3.eth.account.sign_transaction(
-                tx, self.settings.PRIVATE_KEY
-            )
+            signed = self.w3.eth.account.sign_transaction(tx, self.settings.PRIVATE_KEY)
             tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
-            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+            self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
             logger.info(f"Access logged for patient {patient_id}: {tx_hash.hex()}")
             return tx_hash.hex()
@@ -119,9 +115,7 @@ class BlockchainService:
     def register_doctor(self, wallet: str) -> None:
         """Register a doctor wallet."""
         try:
-            tx = self.contract.functions.registerDoctor(wallet).transact(
-                {"from": self.account}
-            )
+            tx = self.contract.functions.registerDoctor(wallet).transact({"from": self.account})
             self.w3.eth.wait_for_transaction_receipt(tx)
             logger.info(f"Doctor registered: {wallet}")
         except Exception as e:
@@ -139,9 +133,9 @@ class BlockchainService:
     def register_patient(self, patient_id: str, wallet: str) -> None:
         """Register a patient with their wallet."""
         try:
-            tx = self.contract.functions.registerPatient(
-                patient_id, wallet
-            ).transact({"from": self.account})
+            tx = self.contract.functions.registerPatient(patient_id, wallet).transact(
+                {"from": self.account}
+            )
             self.w3.eth.wait_for_transaction_receipt(tx)
             logger.info(f"Patient registered: {patient_id}")
         except Exception as e:
@@ -151,9 +145,7 @@ class BlockchainService:
     def get_access_logs(self, patient_id: str) -> Tuple[list, list, list]:
         """Get access logs for a patient."""
         try:
-            doctors, times, emergencies = self.contract.functions.getAccessLogs(
-                patient_id
-            ).call()
+            doctors, times, emergencies = self.contract.functions.getAccessLogs(patient_id).call()
             logger.info(f"Retrieved {len(doctors)} access logs for patient {patient_id}")
             return doctors, times, emergencies
         except Exception as e:
@@ -166,9 +158,9 @@ class BlockchainService:
         """Get access logs as a patient using their private key."""
         try:
             account = self.w3.eth.account.from_key(private_key).address
-            doctors, times, emergencies = self.contract.functions.getAccessLogs(
-                patient_id
-            ).call({"from": account})
+            doctors, times, emergencies = self.contract.functions.getAccessLogs(patient_id).call(
+                {"from": account}
+            )
             logger.info(f"Patient {patient_id} retrieved their access logs")
             return doctors, times, emergencies
         except Exception as e:
@@ -189,9 +181,7 @@ class BlockchainService:
                 }
             )
 
-            signed = self.w3.eth.account.sign_transaction(
-                tx, self.settings.PRIVATE_KEY
-            )
+            signed = self.w3.eth.account.sign_transaction(tx, self.settings.PRIVATE_KEY)
             tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
 
             logger.info(f"Emergency access generated: {tx_hash.hex()}")
