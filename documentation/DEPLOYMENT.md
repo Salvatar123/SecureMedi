@@ -33,7 +33,7 @@ This guide covers deploying SecureMedi to production environments. SecureMedi is
 
 ### Development Tools (Optional)
 - **Docker Compose** for multi-container orchestration
-- **Streamlit** for dashboard deployment
+- **Next.js** for modern dashboard deployment
 - **Nginx/HAProxy** for load balancing (production)
 
 ---
@@ -97,8 +97,16 @@ ganache-cli --deterministic --accounts=10
 # Main monitoring system
 python main.py
 
-# Dashboard (in separate terminal)
-streamlit run dashboard/app.py
+# Dashboard (v2.0 - Next.js) in separate terminals:
+
+# Terminal 2: Backend API
+cd backend
+python -m uvicorn app.main:app --reload --port 8000
+
+# Terminal 3: Frontend
+cd frontend
+npm install
+npm run dev  # Opens http://localhost:3000
 ```
 
 ---
@@ -121,13 +129,13 @@ docker build -t securemedi:latest .
 
 ```bash
 docker run -d \
-  --name securemedi \
+  --name securemedi-backend \
   -e GANACHE_URL=http://ganache:7545 \
   -e CONTRACT_ADDRESS=0x... \
   -e PRIVATE_KEY=0x... \
   -v $(pwd)/logs:/app/logs \
-  -p 8501:8501 \
-  securemedi:latest
+  -p 8000:8000 \
+  securemedi-backend:latest
 ```
 
 ### Multi-Container Deployment with Docker Compose
@@ -139,8 +147,8 @@ docker-compose up -d
 ```
 
 This starts:
-- **securemedi**: Main application
-- **dashboard**: Streamlit web interface (port 8501)
+- **backend**: FastAPI server (port 8000)
+- **frontend**: Next.js React app (port 3000)
 - **ganache**: Local blockchain (port 7545)
 
 #### 2. Stop Services

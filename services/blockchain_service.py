@@ -8,11 +8,25 @@ import json
 import logging
 import os
 from typing import Tuple
-from web3 import Web3
 from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Lazy import Web3 to avoid pkg_resources issues
+Web3 = None
+
+
+def _ensure_web3():
+    """Lazy load Web3 on first use."""
+    global Web3
+    if Web3 is None:
+        try:
+            from web3 import Web3 as _Web3
+            Web3 = _Web3
+        except ImportError as e:
+            logger.error(f"Failed to import Web3: {e}")
+            raise
 
 
 class BlockchainService:
@@ -29,6 +43,9 @@ class BlockchainService:
     def _initialize(self) -> None:
         """Initialize Web3 connection and load contract."""
         try:
+            # Lazy load Web3
+            _ensure_web3()
+            
             # Connect to blockchain network
             self.w3 = Web3(Web3.HTTPProvider(self.settings.GANACHE_URL))
 
@@ -79,6 +96,36 @@ class BlockchainService:
             logger.error(f"Failed to get key: {e}")
             raise
 
+    def emergency_access(self, patient_id: str, key: str) -> dict:
+        """
+        Emergency access to patient data.
+        This function will bypass normal authentication and use a one-time key
+        to access a patient's data.
+        """
+        try:
+            # For now, we'll just check if the key is valid.
+            # In a real implementation, we would also check if the key is a valid one-time key
+            # and if the patient_id is valid.
+            is_valid_key = len(key) > 0  # Dummy validation
+
+            if not is_valid_key:
+                raise ValueError("Invalid emergency access key")
+
+            # Dummy data, replace with actual data retrieval from blockchain/database
+            patient_data = {
+                "patient_id": patient_id,
+                "name": "John Doe",
+                "vitals": {
+                    "heart_rate": 80,
+                    "temperature": 98.6,
+                    "blood_pressure": "120/80"
+                }
+            }
+            return patient_data
+        except Exception as e:
+            logger.error(f"Emergency access failed: {e}")
+            raise
+
     def verify_key(self, user: str, key: bytes) -> bool:
         """Verify if a user has a valid access key."""
         try:
@@ -90,23 +137,12 @@ class BlockchainService:
     def log_access(self, patient_id: str) -> str:
         """Log patient access on blockchain."""
         try:
-            nonce = self.w3.eth.get_transaction_count(self.account)
+            # Use transact() for auto-signing on Ganache
+            tx = self.contract.functions.logAccess(patient_id).transact({"from": self.account})
+            self.w3.eth.wait_for_transaction_receipt(tx)
 
-            tx = self.contract.functions.logAccess(patient_id).build_transaction(
-                {
-                    "from": self.account,
-                    "nonce": nonce,
-                    "gas": self.settings.GAS_LIMIT,
-                    "gasPrice": self.w3.to_wei(self.settings.GAS_PRICE_GWEI, "gwei"),
-                }
-            )
-
-            signed = self.w3.eth.account.sign_transaction(tx, self.settings.PRIVATE_KEY)
-            tx_hash = self.w3.eth.send_raw_transaction(signed.raw_transaction)
-            self.w3.eth.wait_for_transaction_receipt(tx_hash)
-
-            logger.info(f"Access logged for patient {patient_id}: {tx_hash.hex()}")
-            return tx_hash.hex()
+            logger.info(f"Access logged for patient {patient_id}: {tx.hex()}")
+            return tx.hex()
 
         except Exception as e:
             logger.error(f"Failed to log access: {e}")

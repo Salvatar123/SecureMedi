@@ -43,6 +43,10 @@ logs/*.csv
 logs/*.log
 *.log
 
+# Registry (contains sensitive data)
+registry/*.json
+registry_exports/
+
 # Temporary
 *.tmp
 tmp/

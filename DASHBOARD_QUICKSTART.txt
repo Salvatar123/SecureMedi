@@ -1,0 +1,204 @@
+"""
+SecureMedi Dashboard v2.0 - Complete Setup and Run Guide
+
+═══════════════════════════════════════════════════════════════════
+
+## QUICK START (5 minutes)
+
+1. Install Backend Dependencies:
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   cd ..
+   ```
+
+2. Install Frontend Dependencies:
+   ```bash
+   cd frontend
+   npm install
+   cd ..
+   ```
+
+3. Run Both Services:
+   ```bash
+   python run_dashboard.py
+   ```
+   
+4. Open Browser:
+   - Dashboard: http://localhost:3000
+   - API Docs: http://localhost:8000/docs
+
+═══════════════════════════════════════════════════════════════════
+
+## MANUAL SETUP (if autorun doesn't work)
+
+### Terminal 1 - Backend:
+```bash
+cd backend
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+### Terminal 2 - Frontend:
+```bash
+cd frontend
+npm run dev
+```
+
+═══════════════════════════════════════════════════════════════════
+
+## PROJECT STRUCTURE
+
+backend/
+├── app/
+│   ├── api/
+│   │   ├── auth_routes.py       # Login endpoints
+│   │   ├── health_routes.py     # Vitals & alerts
+│   │   ├── patient_routes.py    # Patient data
+│   │   └── doctor_routes.py     # Doctor operations
+│   ├── models/
+│   │   ├── health.py            # HealthData, Alert models
+│   │   ├── auth.py              # Auth models
+│   │   ├── patient.py           # Patient models
+│   │   └── doctor.py            # Doctor models
+│   ├── services/
+│   │   ├── health_service.py    # Health logic
+│   │   └── auth_service.py      # Auth logic
+│   └── main.py                  # FastAPI app
+└── requirements.txt
+
+frontend/
+├── pages/
+│   ├── _app.tsx                 # App wrapper
+│   ├── _document.tsx            # HTML document
+│   ├── login.tsx                # Login page
+│   ├── dashboard.tsx            # Main dashboard
+│   └── index.tsx                # Home (redirect)
+├── components/
+│   ├── Header.tsx               # Navigation
+│   ├── VitalsCard.tsx           # Vitals display
+│   ├── HealthCharts.tsx         # Charts
+│   └── AlertsList.tsx           # Alerts
+├── lib/
+│   ├── api.ts                   # API client
+│   └── auth.ts                  # Auth store
+├── types/
+│   └── index.ts                 # TypeScript types
+└── styles/
+    └── globals.css              # Global styles
+
+═══════════════════════════════════════════════════════════════════
+
+## KEY FEATURES
+
+✅ Real-time Health Monitoring
+   - Live vital signs (Heart Rate, Temperature, SpO₂)
+   - Status-based color coding
+   - Auto-refresh every 5 seconds
+
+✅ Interactive Charts & Analytics
+   - Heart rate trends
+   - Temperature tracking
+   - SpO₂ levels
+   - Status overview
+
+✅ Alert System
+   - Critical, Warning, Info levels
+   - Real-time notifications
+   - Severity-based styling
+
+✅ User Management
+   - Doctor authentication with wallet
+   - Patient login portal
+   - Access audit logs
+   - Role-based views
+
+✅ Modern UI/UX
+   - Dark theme
+   - Responsive design (mobile-friendly)
+   - Smooth animations
+   - Professional styling
+
+✅ Data Export
+   - CSV download functionality
+   - Patient record export
+   - Historical data access
+
+═══════════════════════════════════════════════════════════════════
+
+## TESTING THE DASHBOARD
+
+1. Go to http://localhost:3000
+2. Select "Doctor" or "Patient" tab
+3. Enter test credentials:
+   - Doctor: Address (any address), Key (any hex string)
+   - Patient: ID (P001), Key (any string)
+4. View real-time monitoring on dashboard
+
+Note: Uses CSV data from logs/data.csv
+
+═══════════════════════════════════════════════════════════════════
+
+## API ENDPOINTS
+
+Authentication:
+- POST /api/auth/login/doctor
+- POST /api/auth/login/patient
+- POST /api/auth/verify
+
+Health Data:
+- GET  /api/health/vitals/latest
+- GET  /api/health/vitals/history
+- GET  /api/health/statistics
+- GET  /api/health/alerts
+- POST /api/health/vitals
+
+Patients:
+- GET /api/patients/{patient_id}
+- GET /api/patients/{patient_id}/vitals
+- POST /api/patients/{patient_id}/export
+
+Doctors:
+- GET /api/doctors/{address}
+- GET /api/doctors/{address}/access-logs
+- POST /api/doctors/{address}/access-patient/{patient_id}
+
+Full docs: http://localhost:8000/docs
+
+═══════════════════════════════════════════════════════════════════
+
+## TROUBLESHOOTING
+
+Q: Backend fails to start?
+A: - Install dependencies: pip install -r backend/requirements.txt
+   - Check port 8000 is free
+   - Check Python 3.9+ is installed
+
+Q: Frontend fails to start?
+A: - Install dependencies: npm install in frontend/
+   - Check Node 16+ is installed
+   - Clear cache: rm -rf .next node_modules, npm install
+
+Q: Can't connect frontend to backend?
+A: - Check backend is running on :8000
+   - Check NEXT_PUBLIC_API_URL in frontend/.env.local
+   - Check CORS settings in backend/app/main.py
+
+Q: Charts not showing?
+A: - Ensure logs/data.csv has data
+   - Check browser console for errors
+   - Verify vitals history endpoint returns data
+
+═══════════════════════════════════════════════════════════════════
+
+## NEXT STEPS
+
+1. ✅ Dashboard v2.0 complete
+2. ⏳ Add WebSocket for real-time updates
+3. ⏳ Implement admin dashboard
+4. ⏳ Add predictive analytics
+5. ⏳ Deploy with Docker
+
+See documentation/DASHBOARD_V2_SETUP.md for detailed setup.
+
+═══════════════════════════════════════════════════════════════════
+"""

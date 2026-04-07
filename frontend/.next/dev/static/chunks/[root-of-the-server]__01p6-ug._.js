@@ -1,0 +1,1961 @@
+(globalThis["TURBOPACK"] || (globalThis["TURBOPACK"] = [])).push([typeof document === "object" ? document.currentScript : undefined,
+"[turbopack]/browser/dev/hmr-client/hmr-client.ts [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+/// <reference path="../../../shared/runtime/runtime-types.d.ts" />
+/// <reference path="../../../shared/runtime/dev-globals.d.ts" />
+/// <reference path="../../../shared/runtime/dev-protocol.d.ts" />
+/// <reference path="../../../shared/runtime/dev-extensions.ts" />
+__turbopack_context__.s([
+    "connect",
+    ()=>connect,
+    "setHooks",
+    ()=>setHooks,
+    "subscribeToUpdate",
+    ()=>subscribeToUpdate
+]);
+function connect({ addMessageListener, sendMessage, onUpdateError = console.error }) {
+    addMessageListener((msg)=>{
+        switch(msg.type){
+            case 'turbopack-connected':
+                handleSocketConnected(sendMessage);
+                break;
+            default:
+                try {
+                    if (Array.isArray(msg.data)) {
+                        for(let i = 0; i < msg.data.length; i++){
+                            handleSocketMessage(msg.data[i]);
+                        }
+                    } else {
+                        handleSocketMessage(msg.data);
+                    }
+                    applyAggregatedUpdates();
+                } catch (e) {
+                    console.warn('[Fast Refresh] performing full reload\n\n' + "Fast Refresh will perform a full reload when you edit a file that's imported by modules outside of the React rendering tree.\n" + 'You might have a file which exports a React component but also exports a value that is imported by a non-React component file.\n' + 'Consider migrating the non-React component export to a separate file and importing it into both files.\n\n' + 'It is also possible the parent component of the component you edited is a class component, which disables Fast Refresh.\n' + 'Fast Refresh requires at least one parent function component in your React tree.');
+                    onUpdateError(e);
+                    location.reload();
+                }
+                break;
+        }
+    });
+    const queued = globalThis.TURBOPACK_CHUNK_UPDATE_LISTENERS;
+    if (queued != null && !Array.isArray(queued)) {
+        throw new Error('A separate HMR handler was already registered');
+    }
+    globalThis.TURBOPACK_CHUNK_UPDATE_LISTENERS = {
+        push: ([chunkPath, callback])=>{
+            subscribeToChunkUpdate(chunkPath, sendMessage, callback);
+        }
+    };
+    if (Array.isArray(queued)) {
+        for (const [chunkPath, callback] of queued){
+            subscribeToChunkUpdate(chunkPath, sendMessage, callback);
+        }
+    }
+}
+const updateCallbackSets = new Map();
+function sendJSON(sendMessage, message) {
+    sendMessage(JSON.stringify(message));
+}
+function resourceKey(resource) {
+    return JSON.stringify({
+        path: resource.path,
+        headers: resource.headers || null
+    });
+}
+function subscribeToUpdates(sendMessage, resource) {
+    sendJSON(sendMessage, {
+        type: 'turbopack-subscribe',
+        ...resource
+    });
+    return ()=>{
+        sendJSON(sendMessage, {
+            type: 'turbopack-unsubscribe',
+            ...resource
+        });
+    };
+}
+function handleSocketConnected(sendMessage) {
+    for (const key of updateCallbackSets.keys()){
+        subscribeToUpdates(sendMessage, JSON.parse(key));
+    }
+}
+// we aggregate all pending updates until the issues are resolved
+const chunkListsWithPendingUpdates = new Map();
+function aggregateUpdates(msg) {
+    const key = resourceKey(msg.resource);
+    let aggregated = chunkListsWithPendingUpdates.get(key);
+    if (aggregated) {
+        aggregated.instruction = mergeChunkListUpdates(aggregated.instruction, msg.instruction);
+    } else {
+        chunkListsWithPendingUpdates.set(key, msg);
+    }
+}
+function applyAggregatedUpdates() {
+    if (chunkListsWithPendingUpdates.size === 0) return;
+    hooks.beforeRefresh();
+    for (const msg of chunkListsWithPendingUpdates.values()){
+        triggerUpdate(msg);
+    }
+    chunkListsWithPendingUpdates.clear();
+    finalizeUpdate();
+}
+function mergeChunkListUpdates(updateA, updateB) {
+    let chunks;
+    if (updateA.chunks != null) {
+        if (updateB.chunks == null) {
+            chunks = updateA.chunks;
+        } else {
+            chunks = mergeChunkListChunks(updateA.chunks, updateB.chunks);
+        }
+    } else if (updateB.chunks != null) {
+        chunks = updateB.chunks;
+    }
+    let merged;
+    if (updateA.merged != null) {
+        if (updateB.merged == null) {
+            merged = updateA.merged;
+        } else {
+            // Since `merged` is an array of updates, we need to merge them all into
+            // one, consistent update.
+            // Since there can only be `EcmascriptMergeUpdates` in the array, there is
+            // no need to key on the `type` field.
+            let update = updateA.merged[0];
+            for(let i = 1; i < updateA.merged.length; i++){
+                update = mergeChunkListEcmascriptMergedUpdates(update, updateA.merged[i]);
+            }
+            for(let i = 0; i < updateB.merged.length; i++){
+                update = mergeChunkListEcmascriptMergedUpdates(update, updateB.merged[i]);
+            }
+            merged = [
+                update
+            ];
+        }
+    } else if (updateB.merged != null) {
+        merged = updateB.merged;
+    }
+    return {
+        type: 'ChunkListUpdate',
+        chunks,
+        merged
+    };
+}
+function mergeChunkListChunks(chunksA, chunksB) {
+    const chunks = {};
+    for (const [chunkPath, chunkUpdateA] of Object.entries(chunksA)){
+        const chunkUpdateB = chunksB[chunkPath];
+        if (chunkUpdateB != null) {
+            const mergedUpdate = mergeChunkUpdates(chunkUpdateA, chunkUpdateB);
+            if (mergedUpdate != null) {
+                chunks[chunkPath] = mergedUpdate;
+            }
+        } else {
+            chunks[chunkPath] = chunkUpdateA;
+        }
+    }
+    for (const [chunkPath, chunkUpdateB] of Object.entries(chunksB)){
+        if (chunks[chunkPath] == null) {
+            chunks[chunkPath] = chunkUpdateB;
+        }
+    }
+    return chunks;
+}
+function mergeChunkUpdates(updateA, updateB) {
+    if (updateA.type === 'added' && updateB.type === 'deleted' || updateA.type === 'deleted' && updateB.type === 'added') {
+        return undefined;
+    }
+    if (updateA.type === 'partial') {
+        invariant(updateA.instruction, 'Partial updates are unsupported');
+    }
+    if (updateB.type === 'partial') {
+        invariant(updateB.instruction, 'Partial updates are unsupported');
+    }
+    return undefined;
+}
+function mergeChunkListEcmascriptMergedUpdates(mergedA, mergedB) {
+    const entries = mergeEcmascriptChunkEntries(mergedA.entries, mergedB.entries);
+    const chunks = mergeEcmascriptChunksUpdates(mergedA.chunks, mergedB.chunks);
+    return {
+        type: 'EcmascriptMergedUpdate',
+        entries,
+        chunks
+    };
+}
+function mergeEcmascriptChunkEntries(entriesA, entriesB) {
+    return {
+        ...entriesA,
+        ...entriesB
+    };
+}
+function mergeEcmascriptChunksUpdates(chunksA, chunksB) {
+    if (chunksA == null) {
+        return chunksB;
+    }
+    if (chunksB == null) {
+        return chunksA;
+    }
+    const chunks = {};
+    for (const [chunkPath, chunkUpdateA] of Object.entries(chunksA)){
+        const chunkUpdateB = chunksB[chunkPath];
+        if (chunkUpdateB != null) {
+            const mergedUpdate = mergeEcmascriptChunkUpdates(chunkUpdateA, chunkUpdateB);
+            if (mergedUpdate != null) {
+                chunks[chunkPath] = mergedUpdate;
+            }
+        } else {
+            chunks[chunkPath] = chunkUpdateA;
+        }
+    }
+    for (const [chunkPath, chunkUpdateB] of Object.entries(chunksB)){
+        if (chunks[chunkPath] == null) {
+            chunks[chunkPath] = chunkUpdateB;
+        }
+    }
+    if (Object.keys(chunks).length === 0) {
+        return undefined;
+    }
+    return chunks;
+}
+function mergeEcmascriptChunkUpdates(updateA, updateB) {
+    if (updateA.type === 'added' && updateB.type === 'deleted') {
+        // These two completely cancel each other out.
+        return undefined;
+    }
+    if (updateA.type === 'deleted' && updateB.type === 'added') {
+        const added = [];
+        const deleted = [];
+        const deletedModules = new Set(updateA.modules ?? []);
+        const addedModules = new Set(updateB.modules ?? []);
+        for (const moduleId of addedModules){
+            if (!deletedModules.has(moduleId)) {
+                added.push(moduleId);
+            }
+        }
+        for (const moduleId of deletedModules){
+            if (!addedModules.has(moduleId)) {
+                deleted.push(moduleId);
+            }
+        }
+        if (added.length === 0 && deleted.length === 0) {
+            return undefined;
+        }
+        return {
+            type: 'partial',
+            added,
+            deleted
+        };
+    }
+    if (updateA.type === 'partial' && updateB.type === 'partial') {
+        const added = new Set([
+            ...updateA.added ?? [],
+            ...updateB.added ?? []
+        ]);
+        const deleted = new Set([
+            ...updateA.deleted ?? [],
+            ...updateB.deleted ?? []
+        ]);
+        if (updateB.added != null) {
+            for (const moduleId of updateB.added){
+                deleted.delete(moduleId);
+            }
+        }
+        if (updateB.deleted != null) {
+            for (const moduleId of updateB.deleted){
+                added.delete(moduleId);
+            }
+        }
+        return {
+            type: 'partial',
+            added: [
+                ...added
+            ],
+            deleted: [
+                ...deleted
+            ]
+        };
+    }
+    if (updateA.type === 'added' && updateB.type === 'partial') {
+        const modules = new Set([
+            ...updateA.modules ?? [],
+            ...updateB.added ?? []
+        ]);
+        for (const moduleId of updateB.deleted ?? []){
+            modules.delete(moduleId);
+        }
+        return {
+            type: 'added',
+            modules: [
+                ...modules
+            ]
+        };
+    }
+    if (updateA.type === 'partial' && updateB.type === 'deleted') {
+        // We could eagerly return `updateB` here, but this would potentially be
+        // incorrect if `updateA` has added modules.
+        const modules = new Set(updateB.modules ?? []);
+        if (updateA.added != null) {
+            for (const moduleId of updateA.added){
+                modules.delete(moduleId);
+            }
+        }
+        return {
+            type: 'deleted',
+            modules: [
+                ...modules
+            ]
+        };
+    }
+    // Any other update combination is invalid.
+    return undefined;
+}
+function invariant(_, message) {
+    throw new Error(`Invariant: ${message}`);
+}
+const CRITICAL = [
+    'bug',
+    'error',
+    'fatal'
+];
+function compareByList(list, a, b) {
+    const aI = list.indexOf(a) + 1 || list.length;
+    const bI = list.indexOf(b) + 1 || list.length;
+    return aI - bI;
+}
+const chunksWithIssues = new Map();
+function emitIssues() {
+    const issues = [];
+    const deduplicationSet = new Set();
+    for (const [_, chunkIssues] of chunksWithIssues){
+        for (const chunkIssue of chunkIssues){
+            if (deduplicationSet.has(chunkIssue.formatted)) continue;
+            issues.push(chunkIssue);
+            deduplicationSet.add(chunkIssue.formatted);
+        }
+    }
+    sortIssues(issues);
+    hooks.issues(issues);
+}
+function handleIssues(msg) {
+    const key = resourceKey(msg.resource);
+    let hasCriticalIssues = false;
+    for (const issue of msg.issues){
+        if (CRITICAL.includes(issue.severity)) {
+            hasCriticalIssues = true;
+        }
+    }
+    if (msg.issues.length > 0) {
+        chunksWithIssues.set(key, msg.issues);
+    } else if (chunksWithIssues.has(key)) {
+        chunksWithIssues.delete(key);
+    }
+    emitIssues();
+    return hasCriticalIssues;
+}
+const SEVERITY_ORDER = [
+    'bug',
+    'fatal',
+    'error',
+    'warning',
+    'info',
+    'log'
+];
+const CATEGORY_ORDER = [
+    'parse',
+    'resolve',
+    'code generation',
+    'rendering',
+    'typescript',
+    'other'
+];
+function sortIssues(issues) {
+    issues.sort((a, b)=>{
+        const first = compareByList(SEVERITY_ORDER, a.severity, b.severity);
+        if (first !== 0) return first;
+        return compareByList(CATEGORY_ORDER, a.category, b.category);
+    });
+}
+const hooks = {
+    beforeRefresh: ()=>{},
+    refresh: ()=>{},
+    buildOk: ()=>{},
+    issues: (_issues)=>{}
+};
+function setHooks(newHooks) {
+    Object.assign(hooks, newHooks);
+}
+function handleSocketMessage(msg) {
+    sortIssues(msg.issues);
+    handleIssues(msg);
+    switch(msg.type){
+        case 'issues':
+            break;
+        case 'partial':
+            // aggregate updates
+            aggregateUpdates(msg);
+            break;
+        default:
+            // run single update
+            const runHooks = chunkListsWithPendingUpdates.size === 0;
+            if (runHooks) hooks.beforeRefresh();
+            triggerUpdate(msg);
+            if (runHooks) finalizeUpdate();
+            break;
+    }
+}
+function finalizeUpdate() {
+    hooks.refresh();
+    hooks.buildOk();
+    // This is used by the Next.js integration test suite to notify it when HMR
+    // updates have been completed.
+    // TODO: Only run this in test environments (gate by `process.env.__NEXT_TEST_MODE`)
+    if (globalThis.__NEXT_HMR_CB) {
+        globalThis.__NEXT_HMR_CB();
+        globalThis.__NEXT_HMR_CB = null;
+    }
+}
+function subscribeToChunkUpdate(chunkListPath, sendMessage, callback) {
+    return subscribeToUpdate({
+        path: chunkListPath
+    }, sendMessage, callback);
+}
+function subscribeToUpdate(resource, sendMessage, callback) {
+    const key = resourceKey(resource);
+    let callbackSet;
+    const existingCallbackSet = updateCallbackSets.get(key);
+    if (!existingCallbackSet) {
+        callbackSet = {
+            callbacks: new Set([
+                callback
+            ]),
+            unsubscribe: subscribeToUpdates(sendMessage, resource)
+        };
+        updateCallbackSets.set(key, callbackSet);
+    } else {
+        existingCallbackSet.callbacks.add(callback);
+        callbackSet = existingCallbackSet;
+    }
+    return ()=>{
+        callbackSet.callbacks.delete(callback);
+        if (callbackSet.callbacks.size === 0) {
+            callbackSet.unsubscribe();
+            updateCallbackSets.delete(key);
+        }
+    };
+}
+function triggerUpdate(msg) {
+    const key = resourceKey(msg.resource);
+    const callbackSet = updateCallbackSets.get(key);
+    if (!callbackSet) {
+        return;
+    }
+    for (const callback of callbackSet.callbacks){
+        callback(msg);
+    }
+    if (msg.type === 'notFound') {
+        // This indicates that the resource which we subscribed to either does not exist or
+        // has been deleted. In either case, we should clear all update callbacks, so if a
+        // new subscription is created for the same resource, it will send a new "subscribe"
+        // message to the server.
+        // No need to send an "unsubscribe" message to the server, it will have already
+        // dropped the update stream before sending the "notFound" message.
+        updateCallbackSets.delete(key);
+    }
+}
+}),
+"[project]/SecureMedi/frontend/lib/auth.ts [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "useAuthStore",
+    ()=>useAuthStore
+]);
+// Auth Store using Zustand
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$zustand$2f$esm$2f$index$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__$3c$locals$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/zustand/esm/index.mjs [client] (ecmascript) <locals>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/js-cookie/dist/js.cookie.mjs [client] (ecmascript)");
+;
+;
+const useAuthStore = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$zustand$2f$esm$2f$index$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__$3c$locals$3e$__["create"])((set)=>({
+        token: null,
+        userAddress: null,
+        role: null,
+        isAuthenticated: false,
+        login: (token, address, role)=>{
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].set("auth_token", token, {
+                expires: 7
+            });
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].set("user_address", address, {
+                expires: 7
+            });
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].set("user_role", role, {
+                expires: 7
+            });
+            set({
+                token,
+                userAddress: address,
+                role,
+                isAuthenticated: true
+            });
+        },
+        logout: ()=>{
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].remove("auth_token");
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].remove("user_address");
+            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].remove("user_role");
+            set({
+                token: null,
+                userAddress: null,
+                role: null,
+                isAuthenticated: false
+            });
+        },
+        initialize: ()=>{
+            const token = __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].get("auth_token");
+            const userAddress = __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].get("user_address");
+            const role = __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].get("user_role");
+            if (token && userAddress && role) {
+                set({
+                    token,
+                    userAddress,
+                    role,
+                    isAuthenticated: true
+                });
+            }
+        }
+    }));
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/components/Header.tsx [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// Header Component
+__turbopack_context__.s([
+    "Header",
+    ()=>Header
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/jsx-dev-runtime.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$link$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/next/link.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/lib/auth.ts [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/next/router.js [client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+;
+;
+;
+const Header = ()=>{
+    _s();
+    const { isAuthenticated, role, logout } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["useAuthStore"])();
+    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useRouter"])();
+    const handleLogout = ()=>{
+        logout();
+        router.push("/login");
+    };
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("header", {
+        className: "border-b border-border bg-card sticky top-0 z-40",
+        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "flex justify-between items-center h-16",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$link$2e$js__$5b$client$5d$__$28$ecmascript$29$__["default"], {
+                        href: "/",
+                        className: "flex items-center space-x-2",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center",
+                                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-white font-bold text-sm",
+                                    children: "SM"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                    lineNumber: 23,
+                                    columnNumber: 15
+                                }, ("TURBOPACK compile-time value", void 0))
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                lineNumber: 22,
+                                columnNumber: 13
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "text-xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent",
+                                children: "SecureMedi"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                lineNumber: 25,
+                                columnNumber: 13
+                            }, ("TURBOPACK compile-time value", void 0))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                        lineNumber: 21,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex items-center space-x-4",
+                        children: isAuthenticated ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Fragment"], {
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                    className: "text-sm text-foreground/70",
+                                    children: [
+                                        "Role: ",
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                            className: "font-semibold",
+                                            children: role
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                            lineNumber: 34,
+                                            columnNumber: 25
+                                        }, ("TURBOPACK compile-time value", void 0))
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                    lineNumber: 33,
+                                    columnNumber: 17
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("button", {
+                                    onClick: handleLogout,
+                                    className: "px-4 py-2 bg-danger/20 text-danger rounded-lg hover:bg-danger/30 transition-colors text-sm font-medium",
+                                    children: "Logout"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                                    lineNumber: 36,
+                                    columnNumber: 17
+                                }, ("TURBOPACK compile-time value", void 0))
+                            ]
+                        }, void 0, true) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$link$2e$js__$5b$client$5d$__$28$ecmascript$29$__["default"], {
+                            href: "/login",
+                            className: "px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors text-sm font-medium",
+                            children: "Login"
+                        }, void 0, false, {
+                            fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                            lineNumber: 44,
+                            columnNumber: 15
+                        }, ("TURBOPACK compile-time value", void 0))
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                        lineNumber: 30,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+                lineNumber: 20,
+                columnNumber: 9
+            }, ("TURBOPACK compile-time value", void 0))
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+            lineNumber: 19,
+            columnNumber: 7
+        }, ("TURBOPACK compile-time value", void 0))
+    }, void 0, false, {
+        fileName: "[project]/SecureMedi/frontend/components/Header.tsx",
+        lineNumber: 18,
+        columnNumber: 5
+    }, ("TURBOPACK compile-time value", void 0));
+};
+_s(Header, "58K8RNuXtFOq9PvpHTllgVZblL8=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["useAuthStore"],
+        __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useRouter"]
+    ];
+});
+_c = Header;
+var _c;
+__turbopack_context__.k.register(_c, "Header");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/components/VitalsCard.tsx [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// Vitals Card Component
+__turbopack_context__.s([
+    "VitalsCard",
+    ()=>VitalsCard
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/jsx-dev-runtime.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$HeartIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__HeartIcon$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/@heroicons/react/16/solid/esm/HeartIcon.js [client] (ecmascript) <export default as HeartIcon>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$FireIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__FireIcon$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/@heroicons/react/16/solid/esm/FireIcon.js [client] (ecmascript) <export default as FireIcon>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$SparklesIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__SparklesIcon$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/@heroicons/react/16/solid/esm/SparklesIcon.js [client] (ecmascript) <export default as SparklesIcon>");
+;
+;
+const VitalsCard = ({ data, isLive = true })=>{
+    if (!data) {
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "metric-card",
+            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                className: "text-sm text-foreground/50",
+                children: "No vitals available"
+            }, void 0, false, {
+                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                lineNumber: 16,
+                columnNumber: 9
+            }, ("TURBOPACK compile-time value", void 0))
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+            lineNumber: 15,
+            columnNumber: 7
+        }, ("TURBOPACK compile-time value", void 0));
+    }
+    const getStatusColor = (status)=>{
+        switch(status){
+            case "CRITICAL":
+                return "text-danger";
+            case "WARNING":
+                return "text-warning";
+            case "NORMAL":
+                return "text-success";
+            default:
+                return "text-foreground/50";
+        }
+    };
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "metric-card space-y-4",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "flex justify-between items-center",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                        className: "font-semibold text-lg",
+                        children: "Current Vitals"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 37,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    isLive && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                        className: "flex items-center space-x-1 text-xs text-success animate-pulse-glow",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                className: "w-2 h-2 bg-success rounded-full"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 40,
+                                columnNumber: 13
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                children: "LIVE"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 41,
+                                columnNumber: 13
+                            }, ("TURBOPACK compile-time value", void 0))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 39,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                lineNumber: 36,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0)),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "grid grid-cols-3 gap-4",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "space-y-2",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex items-center space-x-2 text-sm text-foreground/70",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$HeartIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__HeartIcon$3e$__["HeartIcon"], {
+                                        className: "w-4 h-4 text-danger"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 49,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0)),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        children: "Heart Rate"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 50,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0))
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 48,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-2xl font-bold",
+                                children: data.heart_rate
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 52,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-xs text-foreground/50",
+                                children: "bpm"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 53,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 47,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "space-y-2",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex items-center space-x-2 text-sm text-foreground/70",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$FireIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__FireIcon$3e$__["FireIcon"], {
+                                        className: "w-4 h-4 text-warning"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 58,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0)),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        children: "Temperature"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 59,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0))
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 57,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-2xl font-bold",
+                                children: data.temperature.toFixed(1)
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 61,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-xs text-foreground/50",
+                                children: "°C"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 62,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 56,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "space-y-2",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex items-center space-x-2 text-sm text-foreground/70",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$SparklesIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__SparklesIcon$3e$__["SparklesIcon"], {
+                                        className: "w-4 h-4 text-info"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 67,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0)),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        children: "SpO₂"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                        lineNumber: 68,
+                                        columnNumber: 13
+                                    }, ("TURBOPACK compile-time value", void 0))
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 66,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-2xl font-bold",
+                                children: data.spo2
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 70,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                className: "text-xs text-foreground/50",
+                                children: "%"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                                lineNumber: 71,
+                                columnNumber: 11
+                            }, ("TURBOPACK compile-time value", void 0))
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 65,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                lineNumber: 46,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0)),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "pt-2 border-t border-border flex items-center justify-between",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                        className: `text-sm font-semibold ${getStatusColor(data.status)}`,
+                        children: data.status
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 76,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                        className: "text-xs text-foreground/50",
+                        children: new Date(data.timestamp).toLocaleTimeString()
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                        lineNumber: 79,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+                lineNumber: 75,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0))
+        ]
+    }, void 0, true, {
+        fileName: "[project]/SecureMedi/frontend/components/VitalsCard.tsx",
+        lineNumber: 35,
+        columnNumber: 5
+    }, ("TURBOPACK compile-time value", void 0));
+};
+_c = VitalsCard;
+var _c;
+__turbopack_context__.k.register(_c, "VitalsCard");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/components/HealthCharts.tsx [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// Health Charts Component
+__turbopack_context__.s([
+    "HealthCharts",
+    ()=>HealthCharts
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/jsx-dev-runtime.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$chart$2f$LineChart$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/chart/LineChart.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$Line$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/cartesian/Line.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$chart$2f$BarChart$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/chart/BarChart.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$Bar$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/cartesian/Bar.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$XAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/cartesian/XAxis.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$YAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/cartesian/YAxis.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$CartesianGrid$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/cartesian/CartesianGrid.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$Tooltip$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/component/Tooltip.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$ResponsiveContainer$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/recharts/es6/component/ResponsiveContainer.js [client] (ecmascript)");
+;
+;
+const HealthCharts = ({ data })=>{
+    if (!data || data.length === 0) {
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "metric-card",
+            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                className: "text-sm text-foreground/50",
+                children: "No data to display"
+            }, void 0, false, {
+                fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                lineNumber: 26,
+                columnNumber: 9
+            }, ("TURBOPACK compile-time value", void 0))
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+            lineNumber: 25,
+            columnNumber: 7
+        }, ("TURBOPACK compile-time value", void 0));
+    }
+    const chartData = data.slice().reverse().map((d)=>({
+            time: new Date(d.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit"
+            }),
+            heart_rate: d.heart_rate,
+            temperature: (d.temperature * 10).toFixed(0),
+            spo2: d.spo2
+        }));
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "space-y-6",
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "metric-card",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                        className: "font-semibold text-lg mb-4",
+                        children: "Heart Rate Trend"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 47,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$ResponsiveContainer$2e$js__$5b$client$5d$__$28$ecmascript$29$__["ResponsiveContainer"], {
+                        width: "100%",
+                        height: 250,
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$chart$2f$LineChart$2e$js__$5b$client$5d$__$28$ecmascript$29$__["LineChart"], {
+                            data: chartData,
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$CartesianGrid$2e$js__$5b$client$5d$__$28$ecmascript$29$__["CartesianGrid"], {
+                                    strokeDasharray: "3 3",
+                                    stroke: "#334155"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 50,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$XAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["XAxis"], {
+                                    dataKey: "time",
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 51,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$YAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["YAxis"], {
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 52,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$Tooltip$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Tooltip"], {
+                                    contentStyle: {
+                                        backgroundColor: "#1e293b",
+                                        border: "1px solid #334155"
+                                    }
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 53,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$Line$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Line"], {
+                                    type: "monotone",
+                                    dataKey: "heart_rate",
+                                    stroke: "#f43f5e",
+                                    dot: false,
+                                    isAnimationActive: false
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 59,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0))
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                            lineNumber: 49,
+                            columnNumber: 11
+                        }, ("TURBOPACK compile-time value", void 0))
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 48,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                lineNumber: 46,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0)),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "metric-card",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                        className: "font-semibold text-lg mb-4",
+                        children: "Temperature Trend"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 71,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$ResponsiveContainer$2e$js__$5b$client$5d$__$28$ecmascript$29$__["ResponsiveContainer"], {
+                        width: "100%",
+                        height: 250,
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$chart$2f$LineChart$2e$js__$5b$client$5d$__$28$ecmascript$29$__["LineChart"], {
+                            data: chartData,
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$CartesianGrid$2e$js__$5b$client$5d$__$28$ecmascript$29$__["CartesianGrid"], {
+                                    strokeDasharray: "3 3",
+                                    stroke: "#334155"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 74,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$XAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["XAxis"], {
+                                    dataKey: "time",
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 75,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$YAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["YAxis"], {
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 76,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$Tooltip$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Tooltip"], {
+                                    contentStyle: {
+                                        backgroundColor: "#1e293b",
+                                        border: "1px solid #334155"
+                                    }
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 77,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$Line$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Line"], {
+                                    type: "monotone",
+                                    dataKey: "temperature",
+                                    stroke: "#f59e0b",
+                                    dot: false,
+                                    isAnimationActive: false
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 83,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0))
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                            lineNumber: 73,
+                            columnNumber: 11
+                        }, ("TURBOPACK compile-time value", void 0))
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 72,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                lineNumber: 70,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0)),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "metric-card",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                        className: "font-semibold text-lg mb-4",
+                        children: "SpO₂ Levels"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 95,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$ResponsiveContainer$2e$js__$5b$client$5d$__$28$ecmascript$29$__["ResponsiveContainer"], {
+                        width: "100%",
+                        height: 250,
+                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$chart$2f$BarChart$2e$js__$5b$client$5d$__$28$ecmascript$29$__["BarChart"], {
+                            data: chartData,
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$CartesianGrid$2e$js__$5b$client$5d$__$28$ecmascript$29$__["CartesianGrid"], {
+                                    strokeDasharray: "3 3",
+                                    stroke: "#334155"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 98,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$XAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["XAxis"], {
+                                    dataKey: "time",
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 99,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$YAxis$2e$js__$5b$client$5d$__$28$ecmascript$29$__["YAxis"], {
+                                    stroke: "#94a3b8"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 100,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$component$2f$Tooltip$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Tooltip"], {
+                                    contentStyle: {
+                                        backgroundColor: "#1e293b",
+                                        border: "1px solid #334155"
+                                    }
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 101,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0)),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$recharts$2f$es6$2f$cartesian$2f$Bar$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Bar"], {
+                                    dataKey: "spo2",
+                                    fill: "#06b6d4"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                                    lineNumber: 107,
+                                    columnNumber: 13
+                                }, ("TURBOPACK compile-time value", void 0))
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                            lineNumber: 97,
+                            columnNumber: 11
+                        }, ("TURBOPACK compile-time value", void 0))
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                        lineNumber: 96,
+                        columnNumber: 9
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+                lineNumber: 94,
+                columnNumber: 7
+            }, ("TURBOPACK compile-time value", void 0))
+        ]
+    }, void 0, true, {
+        fileName: "[project]/SecureMedi/frontend/components/HealthCharts.tsx",
+        lineNumber: 45,
+        columnNumber: 5
+    }, ("TURBOPACK compile-time value", void 0));
+};
+_c = HealthCharts;
+var _c;
+__turbopack_context__.k.register(_c, "HealthCharts");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/components/AlertsList.tsx [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+// Alerts Component
+__turbopack_context__.s([
+    "AlertsList",
+    ()=>AlertsList
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/jsx-dev-runtime.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$ExclamationTriangleIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ExclamationTriangleIcon$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/@heroicons/react/16/solid/esm/ExclamationTriangleIcon.js [client] (ecmascript) <export default as ExclamationTriangleIcon>");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$CheckCircleIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CheckCircleIcon$3e$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/@heroicons/react/16/solid/esm/CheckCircleIcon.js [client] (ecmascript) <export default as CheckCircleIcon>");
+;
+;
+const AlertsList = ({ alerts })=>{
+    if (!alerts || alerts.length === 0) {
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+            className: "metric-card",
+            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "flex items-center space-x-2",
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$CheckCircleIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__CheckCircleIcon$3e$__["CheckCircleIcon"], {
+                        className: "w-5 h-5 text-success"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                        lineNumber: 16,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                        className: "text-sm text-foreground/70",
+                        children: "No active alerts"
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                        lineNumber: 17,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, void 0, true, {
+                fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                lineNumber: 15,
+                columnNumber: 9
+            }, ("TURBOPACK compile-time value", void 0))
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+            lineNumber: 14,
+            columnNumber: 7
+        }, ("TURBOPACK compile-time value", void 0));
+    }
+    const getSeverityColor = (severity)=>{
+        if (severity >= 4) return "bg-danger/20 border-danger/50";
+        if (severity >= 3) return "bg-warning/20 border-warning/50";
+        return "bg-info/20 border-info/50";
+    };
+    const getSeverityBadge = (severity)=>{
+        if (severity >= 4) return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+            className: "bg-danger text-white px-2 py-1 rounded text-xs font-semibold",
+            children: "CRITICAL"
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+            lineNumber: 30,
+            columnNumber: 31
+        }, ("TURBOPACK compile-time value", void 0));
+        if (severity >= 3) return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+            className: "bg-warning text-white px-2 py-1 rounded text-xs font-semibold",
+            children: "WARNING"
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+            lineNumber: 31,
+            columnNumber: 31
+        }, ("TURBOPACK compile-time value", void 0));
+        return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+            className: "bg-info text-white px-2 py-1 rounded text-xs font-semibold",
+            children: "INFO"
+        }, void 0, false, {
+            fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+            lineNumber: 32,
+            columnNumber: 12
+        }, ("TURBOPACK compile-time value", void 0));
+    };
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+        className: "space-y-3",
+        children: alerts.map((alert)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: `p-4 rounded-lg border ${getSeverityColor(alert.severity)} space-y-2`,
+                children: [
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                        className: "flex items-center justify-between",
+                        children: [
+                            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "flex items-center space-x-2",
+                                children: [
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f40$heroicons$2f$react$2f$16$2f$solid$2f$esm$2f$ExclamationTriangleIcon$2e$js__$5b$client$5d$__$28$ecmascript$29$__$3c$export__default__as__ExclamationTriangleIcon$3e$__["ExclamationTriangleIcon"], {
+                                        className: "w-5 h-5 text-warning"
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                                        lineNumber: 44,
+                                        columnNumber: 15
+                                    }, ("TURBOPACK compile-time value", void 0)),
+                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                        className: "font-semibold text-sm",
+                                        children: alert.alert_type
+                                    }, void 0, false, {
+                                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                                        lineNumber: 45,
+                                        columnNumber: 15
+                                    }, ("TURBOPACK compile-time value", void 0))
+                                ]
+                            }, void 0, true, {
+                                fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                                lineNumber: 43,
+                                columnNumber: 13
+                            }, ("TURBOPACK compile-time value", void 0)),
+                            getSeverityBadge(alert.severity)
+                        ]
+                    }, void 0, true, {
+                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                        lineNumber: 42,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        className: "text-sm text-foreground/80",
+                        children: alert.message
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                        lineNumber: 49,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0)),
+                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                        className: "text-xs text-foreground/50",
+                        children: new Date(alert.timestamp).toLocaleString()
+                    }, void 0, false, {
+                        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                        lineNumber: 50,
+                        columnNumber: 11
+                    }, ("TURBOPACK compile-time value", void 0))
+                ]
+            }, alert.id, true, {
+                fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+                lineNumber: 38,
+                columnNumber: 9
+            }, ("TURBOPACK compile-time value", void 0)))
+    }, void 0, false, {
+        fileName: "[project]/SecureMedi/frontend/components/AlertsList.tsx",
+        lineNumber: 36,
+        columnNumber: 5
+    }, ("TURBOPACK compile-time value", void 0));
+};
+_c = AlertsList;
+var _c;
+__turbopack_context__.k.register(_c, "AlertsList");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/lib/api.ts [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "apiClient",
+    ()=>apiClient
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$dist$2f$build$2f$polyfills$2f$process$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = /*#__PURE__*/ __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/next/dist/build/polyfills/process.js [client] (ecmascript)");
+// API Client for Frontend
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$axios$2f$lib$2f$axios$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/axios/lib/axios.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/js-cookie/dist/js.cookie.mjs [client] (ecmascript)");
+;
+;
+const API_URL = ("TURBOPACK compile-time value", "http://localhost:8000") || "http://localhost:8000";
+class ApiClient {
+    client;
+    constructor(){
+        this.client = __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$axios$2f$lib$2f$axios$2e$js__$5b$client$5d$__$28$ecmascript$29$__["default"].create({
+            baseURL: API_URL,
+            headers: {
+                "Content-Type": "application/json"
+            }
+        });
+        // Add token to requests
+        this.client.interceptors.request.use((config)=>{
+            const token = __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].get("auth_token");
+            if (token) {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
+            return config;
+        });
+        // Handle errors globally
+        this.client.interceptors.response.use((response)=>response, (error)=>{
+            if (error.response?.status === 401) {
+                // Clear auth
+                __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$js$2d$cookie$2f$dist$2f$js$2e$cookie$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].remove("auth_token");
+                window.location.href = "/login";
+            }
+            return Promise.reject(error);
+        });
+    }
+    // Auth endpoints
+    async loginDoctor(address, key) {
+        return this.client.post("/api/auth/login/doctor", {
+            address,
+            key
+        });
+    }
+    async loginPatient(patientId, privateKey) {
+        return this.client.post("/api/auth/login/patient", {
+            address: patientId,
+            key: privateKey
+        });
+    }
+    // Health endpoints
+    async getLatestVitals() {
+        return this.client.get("/api/health/vitals/latest");
+    }
+    async getVitalsHistory(limit = 100) {
+        return this.client.get("/api/health/vitals/history", {
+            params: {
+                limit
+            }
+        });
+    }
+    async getHealthStats() {
+        return this.client.get("/api/health/statistics");
+    }
+    async getAlerts(patientId) {
+        return this.client.get("/api/health/alerts", {
+            params: {
+                patient_id: patientId
+            }
+        });
+    }
+    // Patient endpoints
+    async getPatientRecord(patientId) {
+        return this.client.get(`/api/patients/${patientId}`);
+    }
+    async getPatientVitals(patientId, limit = 100) {
+        return this.client.get(`/api/patients/${patientId}/vitals`, {
+            params: {
+                limit
+            }
+        });
+    }
+    async exportPatientData(patientId) {
+        return this.client.post(`/api/patients/${patientId}/export`);
+    }
+    // Doctor endpoints
+    async getDoctorInfo(address) {
+        return this.client.get(`/api/doctors/${address}`);
+    }
+    async getAccessLogs(doctorAddress, limit = 100) {
+        return this.client.get(`/api/doctors/${doctorAddress}/access-logs`, {
+            params: {
+                limit
+            }
+        });
+    }
+    async logPatientAccess(doctorAddress, patientId, accessType = "NORMAL", reason = "") {
+        return this.client.post(`/api/doctors/${doctorAddress}/access-patient/${patientId}`, {
+            access_type: accessType,
+            reason
+        });
+    }
+}
+const apiClient = new ApiClient();
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[project]/SecureMedi/frontend/pages/dashboard.tsx [client] (ecmascript)", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.s([
+    "default",
+    ()=>DashboardPage
+]);
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/jsx-dev-runtime.js [client] (ecmascript)");
+// Main Dashboard Page
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react/index.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/next/router.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$head$2e$js__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/next/head.js [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$Header$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/components/Header.tsx [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$VitalsCard$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/components/VitalsCard.tsx [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$HealthCharts$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/components/HealthCharts.tsx [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$AlertsList$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/components/AlertsList.tsx [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/lib/auth.ts [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/lib/api.ts [client] (ecmascript)");
+var __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$2f$dist$2f$index$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/SecureMedi/frontend/node_modules/react-hot-toast/dist/index.mjs [client] (ecmascript)");
+;
+var _s = __turbopack_context__.k.signature();
+;
+;
+;
+;
+;
+;
+;
+;
+;
+;
+function DashboardPage() {
+    _s();
+    const router = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useRouter"])();
+    const { isAuthenticated, role, userAddress } = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["useAuthStore"])();
+    const [vitals, setVitals] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [history, setHistory] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useState"])([]);
+    const [alerts, setAlerts] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useState"])([]);
+    const [stats, setStats] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useState"])(null);
+    const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useState"])(true);
+    (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$index$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useEffect"])({
+        "DashboardPage.useEffect": ()=>{
+            if (!isAuthenticated) {
+                router.push("/login");
+                return;
+            }
+            const fetchData = {
+                "DashboardPage.useEffect.fetchData": async ()=>{
+                    try {
+                        const [vitalsRes, historyRes, alertsRes, statsRes] = await Promise.all([
+                            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["apiClient"].getLatestVitals(),
+                            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["apiClient"].getVitalsHistory(100),
+                            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["apiClient"].getAlerts(),
+                            __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["apiClient"].getHealthStats()
+                        ]);
+                        setVitals(vitalsRes.data);
+                        setHistory(historyRes.data);
+                        setAlerts(alertsRes.data);
+                        setStats(statsRes.data);
+                    } catch (error) {
+                        __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$2f$dist$2f$index$2e$mjs__$5b$client$5d$__$28$ecmascript$29$__["default"].error("Failed to load dashboard data");
+                        console.error(error);
+                    } finally{
+                        setLoading(false);
+                    }
+                }
+            }["DashboardPage.useEffect.fetchData"];
+            fetchData();
+            // Refresh every 5 seconds
+            const interval = setInterval(fetchData, 5000);
+            return ({
+                "DashboardPage.useEffect": ()=>clearInterval(interval)
+            })["DashboardPage.useEffect"];
+        }
+    }["DashboardPage.useEffect"], [
+        isAuthenticated,
+        router
+    ]);
+    if (!isAuthenticated) {
+        return null;
+    }
+    return /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["Fragment"], {
+        children: [
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$head$2e$js__$5b$client$5d$__$28$ecmascript$29$__["default"], {
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("title", {
+                    children: "Dashboard - SecureMedi"
+                }, void 0, false, {
+                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                    lineNumber: 65,
+                    columnNumber: 9
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                lineNumber: 64,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$Header$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__["Header"], {}, void 0, false, {
+                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                lineNumber: 68,
+                columnNumber: 7
+            }, this),
+            /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                className: "min-h-screen bg-background",
+                children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                    className: "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8",
+                    children: [
+                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "mb-8",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h1", {
+                                    className: "text-4xl font-bold text-foreground mb-2",
+                                    children: [
+                                        "Welcome, ",
+                                        role
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 74,
+                                    columnNumber: 13
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                    className: "text-foreground/60",
+                                    children: "Real-time health monitoring dashboard"
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 77,
+                                    columnNumber: 13
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                            lineNumber: 73,
+                            columnNumber: 11
+                        }, this),
+                        loading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "flex items-center justify-center py-12",
+                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                className: "animate-spin rounded-full h-12 w-12 border-b-2 border-primary"
+                            }, void 0, false, {
+                                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                lineNumber: 82,
+                                columnNumber: 15
+                            }, this)
+                        }, void 0, false, {
+                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                            lineNumber: 81,
+                            columnNumber: 13
+                        }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                            className: "space-y-8",
+                            children: [
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$VitalsCard$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__["VitalsCard"], {
+                                    data: vitals,
+                                    isLive: true
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 87,
+                                    columnNumber: 15
+                                }, this),
+                                stats && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4",
+                                    children: Object.entries(stats).slice(0, 4).map(([key, value])=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "metric-card",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                    className: "text-sm text-foreground/60 capitalize",
+                                                    children: key.replace("_", " ")
+                                                }, void 0, false, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 96,
+                                                    columnNumber: 25
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("p", {
+                                                    className: "text-2xl font-bold mt-2",
+                                                    children: value
+                                                }, void 0, false, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 97,
+                                                    columnNumber: 25
+                                                }, this)
+                                            ]
+                                        }, key, true, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 95,
+                                            columnNumber: 23
+                                        }, this))
+                                }, void 0, false, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 91,
+                                    columnNumber: 17
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                            className: "text-2xl font-bold mb-4 text-foreground",
+                                            children: "Active Alerts"
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 105,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$AlertsList$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__["AlertsList"], {
+                                            alerts: alerts
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 106,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 104,
+                                    columnNumber: 15
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h2", {
+                                            className: "text-2xl font-bold mb-4 text-foreground",
+                                            children: "Health Trends"
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 111,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$HealthCharts$2e$tsx__$5b$client$5d$__$28$ecmascript$29$__["HealthCharts"], {
+                                            data: history
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 112,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 110,
+                                    columnNumber: 15
+                                }, this),
+                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                    className: "metric-card",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("h3", {
+                                            className: "text-lg font-semibold mb-4",
+                                            children: "Recent Vitals"
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 117,
+                                            columnNumber: 17
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("div", {
+                                            className: "overflow-x-auto",
+                                            children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("table", {
+                                                className: "w-full text-sm",
+                                                children: [
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("thead", {
+                                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                                            className: "border-b border-border",
+                                                            children: [
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                                    className: "px-4 py-2 text-left text-foreground/70",
+                                                                    children: "Time"
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                    lineNumber: 122,
+                                                                    columnNumber: 25
+                                                                }, this),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                                    className: "px-4 py-2 text-left text-foreground/70",
+                                                                    children: "Heart Rate"
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                    lineNumber: 123,
+                                                                    columnNumber: 25
+                                                                }, this),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                                    className: "px-4 py-2 text-left text-foreground/70",
+                                                                    children: "Temperature"
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                    lineNumber: 124,
+                                                                    columnNumber: 25
+                                                                }, this),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                                    className: "px-4 py-2 text-left text-foreground/70",
+                                                                    children: "SpO₂"
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                    lineNumber: 125,
+                                                                    columnNumber: 25
+                                                                }, this),
+                                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("th", {
+                                                                    className: "px-4 py-2 text-left text-foreground/70",
+                                                                    children: "Status"
+                                                                }, void 0, false, {
+                                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                    lineNumber: 126,
+                                                                    columnNumber: 25
+                                                                }, this)
+                                                            ]
+                                                        }, void 0, true, {
+                                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                            lineNumber: 121,
+                                                            columnNumber: 23
+                                                        }, this)
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                        lineNumber: 120,
+                                                        columnNumber: 21
+                                                    }, this),
+                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tbody", {
+                                                        children: history.slice(0, 10).map((vital, idx)=>/*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("tr", {
+                                                                className: "border-b border-border/50 hover:bg-border/10",
+                                                                children: [
+                                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                                        className: "px-4 py-3",
+                                                                        children: new Date(vital.timestamp).toLocaleTimeString()
+                                                                    }, void 0, false, {
+                                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                        lineNumber: 132,
+                                                                        columnNumber: 27
+                                                                    }, this),
+                                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                                        className: "px-4 py-3",
+                                                                        children: [
+                                                                            vital.heart_rate,
+                                                                            " bpm"
+                                                                        ]
+                                                                    }, void 0, true, {
+                                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                        lineNumber: 135,
+                                                                        columnNumber: 27
+                                                                    }, this),
+                                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                                        className: "px-4 py-3",
+                                                                        children: [
+                                                                            vital.temperature.toFixed(1),
+                                                                            "°C"
+                                                                        ]
+                                                                    }, void 0, true, {
+                                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                        lineNumber: 136,
+                                                                        columnNumber: 27
+                                                                    }, this),
+                                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                                        className: "px-4 py-3",
+                                                                        children: [
+                                                                            vital.spo2,
+                                                                            "%"
+                                                                        ]
+                                                                    }, void 0, true, {
+                                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                        lineNumber: 137,
+                                                                        columnNumber: 27
+                                                                    }, this),
+                                                                    /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("td", {
+                                                                        className: "px-4 py-3",
+                                                                        children: /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2f$jsx$2d$dev$2d$runtime$2e$js__$5b$client$5d$__$28$ecmascript$29$__["jsxDEV"])("span", {
+                                                                            className: `px-2 py-1 rounded text-xs font-semibold ${vital.status === "CRITICAL" ? "bg-danger/20 text-danger" : vital.status === "WARNING" ? "bg-warning/20 text-warning" : "bg-success/20 text-success"}`,
+                                                                            children: vital.status
+                                                                        }, void 0, false, {
+                                                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                            lineNumber: 139,
+                                                                            columnNumber: 29
+                                                                        }, this)
+                                                                    }, void 0, false, {
+                                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                        lineNumber: 138,
+                                                                        columnNumber: 27
+                                                                    }, this)
+                                                                ]
+                                                            }, idx, true, {
+                                                                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                                lineNumber: 131,
+                                                                columnNumber: 25
+                                                            }, this))
+                                                    }, void 0, false, {
+                                                        fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                        lineNumber: 129,
+                                                        columnNumber: 21
+                                                    }, this)
+                                                ]
+                                            }, void 0, true, {
+                                                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                lineNumber: 119,
+                                                columnNumber: 19
+                                            }, this)
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 118,
+                                            columnNumber: 17
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 116,
+                                    columnNumber: 15
+                                }, this)
+                            ]
+                        }, void 0, true, {
+                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                            lineNumber: 85,
+                            columnNumber: 13
+                        }, this)
+                    ]
+                }, void 0, true, {
+                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                    lineNumber: 71,
+                    columnNumber: 9
+                }, this)
+            }, void 0, false, {
+                fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                lineNumber: 70,
+                columnNumber: 7
+            }, this)
+        ]
+    }, void 0, true);
+}
+_s(DashboardPage, "Y8wN2MomCa/fqmUnASefJJ51rp8=", false, function() {
+    return [
+        __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$next$2f$router$2e$js__$5b$client$5d$__$28$ecmascript$29$__["useRouter"],
+        __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$auth$2e$ts__$5b$client$5d$__$28$ecmascript$29$__["useAuthStore"]
+    ];
+});
+_c = DashboardPage;
+var _c;
+__turbopack_context__.k.register(_c, "DashboardPage");
+if (typeof globalThis.$RefreshHelpers$ === 'object' && globalThis.$RefreshHelpers !== null) {
+    __turbopack_context__.k.registerExports(__turbopack_context__.m, globalThis.$RefreshHelpers$);
+}
+}),
+"[next]/entry/page-loader.ts { PAGE => \"[project]/SecureMedi/frontend/pages/dashboard.tsx [client] (ecmascript)\" } [client] (ecmascript)", ((__turbopack_context__, module, exports) => {
+
+const PAGE_PATH = "/dashboard";
+(window.__NEXT_P = window.__NEXT_P || []).push([
+    PAGE_PATH,
+    ()=>{
+        return __turbopack_context__.r("[project]/SecureMedi/frontend/pages/dashboard.tsx [client] (ecmascript)");
+    }
+]);
+// @ts-expect-error module.hot exists
+if ("TURBOPACK compile-time truthy", 1) {
+    // @ts-expect-error module.hot exists
+    module.hot.dispose(function() {
+        window.__NEXT_P.push([
+            PAGE_PATH
+        ]);
+    });
+}
+}),
+"[hmr-entry]/hmr-entry.js { ENTRY => \"[project]/SecureMedi/frontend/pages/dashboard\" }", ((__turbopack_context__) => {
+"use strict";
+
+__turbopack_context__.r("[next]/entry/page-loader.ts { PAGE => \"[project]/SecureMedi/frontend/pages/dashboard.tsx [client] (ecmascript)\" } [client] (ecmascript)");
+}),
+]);
+
+//# sourceMappingURL=%5Broot-of-the-server%5D__01p6-ug._.js.map

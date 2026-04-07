@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - BLOCKCHAIN_RPC_URL=${BLOCKCHAIN_RPC_URL:-http://ganache:8545}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS}
+    volumes:
+      - ./logs:/app/logs
+      - ../blockchain:/app/blockchain
+      - ../config:/app/config
+    depends_on:
+      - ganache
+    networks:
+      - securemedi
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    depends_on:
+      - backend
+    networks:
+      - securemedi
+
+  ganache:
+    image: trufflesuite/ganache-cli:latest
+    ports:
+      - "8545:8545"
+    command: ganache-cli --host 0.0.0.0 --deterministic
+    networks:
+      - securemedi
+
+networks:
+  securemedi:
+    driver: bridge

@@ -129,14 +129,9 @@ def decrypt_patient_id(encrypted: str, key: bytes) -> str:
 ✅ **Always use HTTPS/TLS**:
 
 ```bash
-# Dashboard over HTTPS
-streamlit run dashboard/app.py \
-  --logger.level=info \
-  --server.sslCertFile=cert.pem \
-  --server.sslKeyFile=key.pem
-
-# Docker with reverse proxy (Nginx)
-# See DEPLOYMENT.md for nginx configuration
+# Dashboard over HTTPS with Next.js
+# Use Next.js with SSL certificates or reverse proxy
+# See DEPLOYMENT.md for nginx configuration with Next.js
 ```
 
 ---
@@ -165,9 +160,14 @@ valid = blockchain_service.verify_key(wallet_address, key_bytes)
 
 ### Session Management
 
-**Streamlit Session State** (development):
-```python
-# ✅ Use secure session tokens
+**JWT Token Management** (production):
+```typescript
+// Frontend - Zustand store with cookie persistence
+const { token, login, logout } = useAuthStore();
+
+// Tokens stored in httpOnly cookies (secure)
+cookie.set('auth_token', token, { secure: true, sameSite: 'strict' });
+```
 if st.session_state.authenticated:
     # Token expires after inactivity
     if time_since_login > MAX_SESSION_AGE:

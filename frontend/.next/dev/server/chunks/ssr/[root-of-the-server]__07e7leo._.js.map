@@ -1,0 +1,6 @@
+{
+  "version": 3,
+  "sources": [],
+  "sections": [
+    {"offset": {"line": 28, "column": 0}, "map": {"version":3,"sources":["file:///C:/Users/Arnav%20Anand/SecureMedi/frontend/pages/index.tsx"],"sourcesContent":["// Index Page - Redirect\r\n\r\nimport { useRouter } from \"next/router\";\r\nimport { useEffect } from \"react\";\r\n\r\nexport default function Home() {\r\n  const router = useRouter();\r\n\r\n  useEffect(() => {\r\n    router.replace(\"/dashboard\");\r\n  }, [router]);\r\n\r\n  return null;\r\n}\r\n"],"names":["Home","router","replace"],"mappings":";;;;AAAA,wBAAwB;AAExB;AACA;;;AAEe,SAASA;IACtB,MAAMC,SAAS,IAAA,8JAAS;IAExB,IAAA,gHAAS,EAAC;QACRA,OAAOC,OAAO,CAAC;IACjB,GAAG;QAACD;KAAO;IAEX,OAAO;AACT"}}]
+}

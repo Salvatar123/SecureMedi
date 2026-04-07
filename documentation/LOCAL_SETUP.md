@@ -8,7 +8,7 @@ This guide walks you through running the complete SecureMedi system locally with
 
 - ✅ Python 3.10+ (you have 3.13.5)
 - ✅ Virtual environment activated
-- ✅ Dependencies installed (web3, streamlit, pandas)
+- ✅ Dependencies installed (web3, pandas, fastapi)
 
 ---
 
@@ -111,15 +111,26 @@ cd C:\Users\Arnav Anand\SecureMedi
 2026-03-24 18:56:53,337 - __main__ - INFO - ✅ Alert stored on Blockchain: 0xabc123...
 ```
 
-**Terminal 2 - Start Dashboard (Optional)**
+**Terminal 2 - Start Backend API**
 
 ```powershell
-cd C:\Users\Arnav Anand\SecureMedi
-& ".\.venv\Scripts\Activate.ps1"
-streamlit run dashboard/app.py
+cd C:\Users\Arnav Anand\SecureMedi\backend
+& "C:\Users\Arnav Anand\SecureMedi\.venv\Scripts\Activate.ps1"
+python -m uvicorn app.main:app --reload --port 8000
 ```
 
-Opens dashboard at: **http://localhost:8501**
+API available at: **http://localhost:8000**
+API Docs: **http://localhost:8000/docs**
+
+**Terminal 3 - Start Dashboard (Next.js v2.0)**
+
+```powershell
+cd C:\Users\Arnav Anand\SecureMedi\frontend
+npm install  # Only needed first time
+npm run dev
+```
+
+Dashboard available at: **http://localhost:3000**
 
 ---
 
