@@ -78,6 +78,7 @@ interface EmergencySession {
 
 export default function AdminDashboard() {
   const { isAuthenticated, userRole } = useAuthStore();
+  const isAdminRole = String(userRole || '').toUpperCase() === 'ADMIN';
   const [activeTab, setActiveTab] = useState<'doctors' | 'patients' | 'emergency'>('doctors');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -99,6 +100,7 @@ export default function AdminDashboard() {
   const [assignLoading, setAssignLoading] = useState(false);
   const [emergencySessions, setEmergencySessions] = useState<EmergencySession[]>([]);
   const [emergencyLoading, setEmergencyLoading] = useState(false);
+  const [emergencyError, setEmergencyError] = useState<string | null>(null);
 
   const client = getApiClient();
 
@@ -140,8 +142,9 @@ export default function AdminDashboard() {
   };
 
   const fetchEmergencySessions = async () => {
-    if (!isAuthenticated || userRole !== 'ADMIN') {
+    if (!isAuthenticated || !isAdminRole) {
       setEmergencySessions([]);
+      setEmergencyError('Only ADMIN users can view emergency history.');
       return;
     }
 
@@ -152,11 +155,16 @@ export default function AdminDashboard() {
       const response = await client.get(`/api/admin/emergency/sessions?${params.toString()}`);
       if (response.data?.success) {
         setEmergencySessions(response.data.data || []);
+        setEmergencyError(null);
       } else {
-        toast.error('Failed to load emergency sessions');
+        const message = response.data?.message || 'Failed to load emergency sessions';
+        setEmergencyError(message);
+        toast.error(message);
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Error loading emergency sessions');
+      const message = error?.response?.data?.detail || error?.message || 'Error loading emergency sessions';
+      setEmergencyError(message);
+      toast.error(message);
     } finally {
       setEmergencyLoading(false);
     }
@@ -171,15 +179,15 @@ export default function AdminDashboard() {
       return;
     }
 
-    if (isAuthenticated && userRole === 'ADMIN') {
+    if (isAuthenticated && isAdminRole) {
       fetchEmergencySessions();
     } else {
       setEmergencySessions([]);
     }
-  }, [activeTab, isAuthenticated, userRole]);
+  }, [activeTab, isAuthenticated, isAdminRole]);
 
   useEffect(() => {
-    if (activeTab !== 'emergency' || !isAuthenticated || userRole !== 'ADMIN') {
+    if (activeTab !== 'emergency' || !isAuthenticated || !isAdminRole) {
       return;
     }
 
@@ -188,7 +196,7 @@ export default function AdminDashboard() {
     }, 5000);
 
     return () => clearInterval(intervalId);
-  }, [activeTab, isAuthenticated, userRole]);
+  }, [activeTab, isAuthenticated, isAdminRole]);
 
   const fetchDoctors = async () => {
     setLoading(true);
@@ -737,7 +745,9 @@ export default function AdminDashboard() {
           <EmergencyAccessSection
             isAuthenticated={isAuthenticated}
             userRole={userRole}
+            isAdminRole={isAdminRole}
             emergencyLoading={emergencyLoading}
+            emergencyError={emergencyError}
             onRefresh={fetchEmergencySessions}
             emergencySessions={emergencySessions}
           />
@@ -790,7 +800,9 @@ export default function AdminDashboard() {
 function EmergencyAccessSection({
   isAuthenticated,
   userRole,
+  isAdminRole,
   emergencyLoading,
+  emergencyError,
   onRefresh,
   emergencySessions,
 }: any) {
@@ -818,8 +830,10 @@ function EmergencyAccessSection({
           </div>
         </div>
 
-        {!isAuthenticated || userRole !== 'ADMIN' ? (
-          <p className="text-sm text-gray-600">Login as an ADMIN account to view emergency access history.</p>
+        {!isAuthenticated || !isAdminRole ? (
+          <p className="text-sm text-gray-600">Login as an ADMIN account to view emergency access history. Current role: {userRole || 'UNKNOWN'}</p>
+        ) : emergencyError ? (
+          <p className="text-sm text-red-600">Failed to load emergency history: {emergencyError}</p>
         ) : emergencyLoading ? (
           <p className="text-sm text-gray-600">Loading emergency access history...</p>
         ) : sortedSessions.length === 0 ? (
@@ -830,6 +844,7 @@ function EmergencyAccessSection({
               <thead>
                 <tr className="border-b border-gray-200 text-left text-gray-600">
                   <th className="px-3 py-2">Session</th>
+                  <th className="px-3 py-2">Access Type</th>
                   <th className="px-3 py-2">Doctor</th>
                   <th className="px-3 py-2">Patient</th>
                   <th className="px-3 py-2">Accessed At</th>
@@ -852,6 +867,9 @@ function EmergencyAccessSection({
                   return (
                     <tr key={session.session_id} className="border-b border-gray-100 align-top">
                       <td className="px-3 py-2 font-mono text-xs">{session.session_id.slice(0, 16)}...</td>
+                      <td className="px-3 py-2">
+                        <span className="px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">EMERGENCY</span>
+                      </td>
                       <td className="px-3 py-2 font-mono text-xs">{session.doctor_address || '-'}</td>
                       <td className="px-3 py-2">{session.patient_id || '-'}</td>
                       <td className="px-3 py-2">{session.activated_at ? new Date(session.activated_at).toLocaleString() : session.requested_at ? new Date(session.requested_at).toLocaleString() : '-'}</td>

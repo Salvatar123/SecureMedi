@@ -19,6 +19,7 @@ class SupabaseService:
         self.doctors_table = "doctors"
         self.patients_table = "patients"
         self.emergency_sessions_table = "emergency_access_sessions"
+        self.audit_logs_table = "audit_logs"
     
     # ===================== DOCTORS =====================
     
@@ -345,8 +346,8 @@ class SupabaseService:
                 self.client
                 .table(self.emergency_sessions_table)
                 .select("*")
-                .eq("doctor_address", doctor_address)
-                .eq("patient_id", patient_id)
+                .ilike("doctor_address", (doctor_address or "").strip())
+                .ilike("patient_id", (patient_id or "").strip())
                 .eq("status", "ACTIVE")
                 .gt("expires_at", now_iso)
                 .execute()
@@ -377,3 +378,67 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error expiring emergency sessions: {e}")
             return 0
+
+    # ===================== AUDIT LOGS =====================
+
+    def audit_table_available(self) -> bool:
+        """Check whether audit logs table exists and is queryable."""
+        try:
+            self.client.table(self.audit_logs_table).select("id").limit(1).execute()
+            return True
+        except Exception as e:
+            logger.warning(f"Audit logs table unavailable: {e}")
+            return False
+
+    def create_audit_log(self, log_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Insert a new audit log row."""
+        try:
+            response = self.client.table(self.audit_logs_table).insert(log_data).execute()
+            row = response.data[0] if response.data else log_data
+            return {"success": True, "data": row}
+        except Exception as e:
+            # Backward compatibility: if DB schema doesn't have access_type yet,
+            # retry without it so logging does not break.
+            if "access_type" in log_data:
+                try:
+                    fallback = dict(log_data)
+                    fallback.pop("access_type", None)
+                    response = self.client.table(self.audit_logs_table).insert(fallback).execute()
+                    row = response.data[0] if response.data else fallback
+                    return {"success": True, "data": row}
+                except Exception:
+                    pass
+            logger.error(f"Error creating audit log: {e}")
+            return {"success": False, "error": str(e)}
+
+    def list_audit_logs(
+        self,
+        actor_address: Optional[str] = None,
+        action: Optional[str] = None,
+        resource_id: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """List audit logs with optional filters and pagination."""
+        try:
+            query = self.client.table(self.audit_logs_table).select("*", count="exact")
+
+            if actor_address:
+                query = query.eq("actor_address", actor_address)
+            if action:
+                query = query.eq("action", action)
+            if resource_id:
+                query = query.eq("resource_id", resource_id)
+
+            response = query.order("timestamp", desc=True).range(offset, offset + limit - 1).execute()
+
+            return {
+                "success": True,
+                "data": response.data or [],
+                "total": response.count or 0,
+                "limit": limit,
+                "offset": offset,
+            }
+        except Exception as e:
+            logger.error(f"Error listing audit logs: {e}")
+            return {"success": False, "error": str(e), "data": [], "total": 0}

@@ -6,9 +6,11 @@ from datetime import datetime
 from dataclasses import asdict
 
 from app.middleware.rbac import require_role, require_authenticated, get_current_user
-from app.services.audit_service import AuditService, AuditLog
+from app.services.audit_service import AuditService, AuditLog, AuditAction
+from app.services.emergency_service import EmergencyService
 
 router = APIRouter(prefix="/api/audit", tags=["audit"])
+emergency_service = EmergencyService()
 
 
 class AuditLogResponse:
@@ -87,6 +89,89 @@ async def get_resource_access(
         "resource_id": resource_id,
         "total_accesses": len(filtered_logs),
         "data": [asdict(log) for log in filtered_logs],
+    }
+
+
+@router.get("/patient-access/{patient_id}")
+@require_authenticated()
+async def get_patient_access_history(
+    request: Request,
+    patient_id: str,
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Get access history for a patient report (patient self or admin)."""
+    user = get_current_user(request)
+
+    if user["role"] not in {"PATIENT", "ADMIN"}:
+        raise HTTPException(status_code=403, detail="Only patients or admins can view patient access history")
+
+    if user["role"] == "PATIENT" and user["address"] != patient_id:
+        raise HTTPException(status_code=403, detail="Cannot view access history for another patient")
+
+    logs = AuditService.get_resource_access(patient_id, limit=limit)
+    allowed_actions = {
+        AuditAction.LOG_PATIENT_ACCESS.value,
+        AuditAction.EMERGENCY_ACCESS.value,
+        AuditAction.VIEW_PATIENT_DATA.value,
+        AuditAction.VIEW_PATIENT_VITALS.value,
+    }
+
+    filtered_logs = [
+        log for log in logs
+        if log.action in allowed_actions and (log.actor_role or "").upper() == "DOCTOR"
+    ]
+
+    normalized_logs = []
+    for log in filtered_logs:
+        details = dict(log.details or {})
+        if log.action == AuditAction.EMERGENCY_ACCESS.value:
+            details["access_mode"] = "EMERGENCY"
+        normalized_logs.append({**asdict(log), "details": details})
+
+    # Merge emergency session lifecycle records so emergency usage is always visible
+    emergency_events = []
+    try:
+        emergency_result = emergency_service.list_sessions(patient_id=patient_id, limit=500, offset=0)
+        for session in emergency_result.get("data", []):
+            doctor_address = session.get("doctor_address")
+            status = (session.get("status") or "").upper()
+
+            def _push_event(ts: Optional[str], stage: str):
+                if not ts:
+                    return
+                emergency_events.append({
+                    "timestamp": ts,
+                    "actor_address": doctor_address,
+                    "actor_role": "DOCTOR",
+                    "action": AuditAction.EMERGENCY_ACCESS.value,
+                    "resource_id": patient_id,
+                    "resource_type": "PATIENT_DATA",
+                    "result": "SUCCESS",
+                    "details": {
+                        "access_mode": "EMERGENCY",
+                        "stage": stage,
+                        "session_id": session.get("session_id") or session.get("id"),
+                        "status": status,
+                    },
+                    "ip_address": None,
+                    "error_message": None,
+                })
+
+            _push_event(session.get("requested_at"), "session_requested")
+            _push_event(session.get("activated_at"), "session_activated")
+            _push_event(session.get("closed_at"), "session_closed")
+    except Exception:
+        # Keep API resilient: if emergency merge fails, still return audit-based history.
+        pass
+
+    combined_logs = normalized_logs + emergency_events
+    combined_logs.sort(key=lambda item: item.get("timestamp") or "", reverse=True)
+    combined_logs = combined_logs[:limit]
+
+    return {
+        "patient_id": patient_id,
+        "total_accesses": len(combined_logs),
+        "data": combined_logs,
     }
 
 

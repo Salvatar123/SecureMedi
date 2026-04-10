@@ -237,6 +237,17 @@ class ApiClient {
     }
   }
 
+  async getPatientAccessHistory(patientId: string, limit: number = 100): Promise<any> {
+    try {
+      const response = await this.client.get(`/api/audit/patient-access/${patientId}`, {
+        params: { limit },
+      });
+      return response.data;
+    } catch (error) {
+      throw this.handleError(error);
+    }
+  }
+
   async emergencyAccess(patientId: string, reason?: string): Promise<any> {
     // Backward-compatible wrapper used by older UI code.
     const request = await this.requestEmergencyAccess({
@@ -255,19 +266,28 @@ class ApiClient {
 
   // ============ Patient Endpoints ============
 
-  async getPatientRecord(patientId: string): Promise<any> {
+  async getPatientRecord(patientId: string, accessType?: "NORMAL" | "EMERGENCY"): Promise<any> {
     try {
-      const response = await this.client.get(`/api/patients/${patientId}`);
+      const response = await this.client.get(`/api/patients/${patientId}`, {
+        params: accessType ? { access_type: accessType } : undefined,
+      });
       return response.data;
     } catch (error) {
       throw this.handleError(error);
     }
   }
 
-  async getPatientVitals(patientId: string, limit: number = 100): Promise<HealthData[]> {
+  async getPatientVitals(
+    patientId: string,
+    limit: number = 100,
+    accessType?: "NORMAL" | "EMERGENCY"
+  ): Promise<HealthData[]> {
     try {
       const response = await this.client.get(`/api/patients/${patientId}/vitals`, {
-        params: { limit: Math.min(limit, 500) },
+        params: {
+          limit: Math.min(limit, 500),
+          ...(accessType ? { access_type: accessType } : {}),
+        },
       });
       return response.data;
     } catch (error) {

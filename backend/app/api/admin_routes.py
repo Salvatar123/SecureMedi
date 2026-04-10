@@ -593,6 +593,70 @@ async def list_emergency_sessions(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/emergency/debug-status")
+@require_role("ADMIN")
+async def get_emergency_debug_status(request: Request):
+    """Return emergency service storage diagnostics (Supabase vs fallback)."""
+    try:
+        admin_user = get_current_user(request)
+
+        settings_state = {
+            "ENABLE_SUPABASE": bool(settings.ENABLE_SUPABASE),
+            "SUPABASE_URL_SET": bool(settings.SUPABASE_URL),
+            "SUPABASE_KEY_SET": bool(settings.SUPABASE_KEY),
+        }
+
+        emergency_state = {
+            "service_initialized": emergency_service is not None,
+            "using_supabase": bool(getattr(emergency_service, "use_supabase", False)),
+            "has_supabase_client": bool(getattr(emergency_service, "supabase", None)),
+            "sessions_file": getattr(emergency_service, "sessions_file", None),
+            "local_sessions_file_exists": False,
+            "local_sessions_count": 0,
+            "supabase_table": "emergency_access_sessions",
+            "supabase_table_accessible": False,
+        }
+
+        sessions_file = emergency_state["sessions_file"]
+        if sessions_file:
+            emergency_state["local_sessions_file_exists"] = os.path.exists(sessions_file)
+
+        if emergency_service and hasattr(emergency_service, "_load_sessions"):
+            try:
+                local_sessions = emergency_service._load_sessions()  # diagnostics only
+                emergency_state["local_sessions_count"] = len(local_sessions or {})
+            except Exception:
+                emergency_state["local_sessions_count"] = -1
+
+        if emergency_service and getattr(emergency_service, "supabase", None):
+            try:
+                emergency_state["supabase_table_accessible"] = emergency_service.supabase.emergency_table_available()
+            except Exception:
+                emergency_state["supabase_table_accessible"] = False
+
+        AuditService.log_event(
+            action=AuditAction.VIEW_AUDIT_LOGS,
+            actor_address=admin_user["address"],
+            actor_role=admin_user["role"],
+            resource_id="emergency_debug_status",
+            resource_type="SYSTEM",
+            result=AuditResult.SUCCESS,
+            details={
+                "using_supabase": emergency_state["using_supabase"],
+                "supabase_table_accessible": emergency_state["supabase_table_accessible"],
+            },
+        )
+
+        return {
+            "success": True,
+            "settings": settings_state,
+            "emergency_service": emergency_state,
+        }
+    except Exception as e:
+        logger.error(f"Error fetching emergency debug status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== DOCTORS MANAGEMENT ====================
 
 @router.get("/registry/doctors")

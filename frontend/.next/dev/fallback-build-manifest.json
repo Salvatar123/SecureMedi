@@ -14,20 +14,6 @@
       "static/chunks/SecureMedi_frontend_styles_globals_0.39s3i.css",
       "static/chunks/SecureMedi_frontend_pages__app_07xvfw~._.js",
       "static/chunks/turbopack-SecureMedi_frontend_pages__app_0-whjgy._.js"
-    ],
-    "/_error": [
-      "static/chunks/0nn8_next_dist_compiled_01u8ui4._.js",
-      "static/chunks/0nn8_next_dist_shared_lib_0ppqczv._.js",
-      "static/chunks/0nn8_next_dist_client_0imd4lb._.js",
-      "static/chunks/0nn8_next_dist_07pf-y2._.js",
-      "static/chunks/[next]_entry_page-loader_ts_10dw3md._.js",
-      "static/chunks/0nn8_react_12f.r.-._.js",
-      "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
-      "static/chunks/0nn8_react-dom_083q-7l._.js",
-      "static/chunks/0nn8_0~y0yf1._.js",
-      "static/chunks/[root-of-the-server]__12zx6~l._.js",
-      "static/chunks/SecureMedi_frontend_pages__error_07xvfw~._.js",
-      "static/chunks/turbopack-SecureMedi_frontend_pages__error_0lxmqid._.js"
     ]
   },
   "devFiles": [],

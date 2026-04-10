@@ -129,6 +129,9 @@ class EmergencyService:
         expected_duration_min: int,
         ip_address: Optional[str] = None,
     ) -> Dict[str, Any]:
+        doctor_address_normalized = (doctor_address or "").strip().lower()
+        patient_id_normalized = (patient_id or "").strip()
+
         if len((reason or "").strip()) < 15:
             raise ValueError("Reason must be at least 15 characters")
 
@@ -139,10 +142,10 @@ class EmergencyService:
         if expected_duration_min < 5 or expected_duration_min > 120:
             raise ValueError("Expected duration must be between 5 and 120 minutes")
 
-        if not self._doctor_exists(doctor_address):
+        if not self._doctor_exists(doctor_address_normalized):
             raise ValueError("Doctor does not exist or is inactive")
 
-        if not self._patient_exists(patient_id):
+        if not self._patient_exists(patient_id_normalized):
             raise ValueError("Patient does not exist or is inactive")
 
         now = _utcnow()
@@ -150,8 +153,8 @@ class EmergencyService:
         session = {
             "id": session_id,
             "session_id": session_id,
-            "doctor_address": doctor_address,
-            "patient_id": patient_id,
+            "doctor_address": doctor_address_normalized,
+            "patient_id": patient_id_normalized,
             "reason": reason.strip(),
             "severity": severity_upper,
             "expected_duration_min": expected_duration_min,
@@ -173,7 +176,10 @@ class EmergencyService:
             if expired_count:
                 logger.info(f"Expired {expired_count} stale emergency sessions")
 
-            active_same_case = self.supabase.get_active_emergency_sessions(doctor_address, patient_id)
+            active_same_case = self.supabase.get_active_emergency_sessions(
+                doctor_address_normalized,
+                patient_id_normalized,
+            )
             if active_same_case:
                 raise ValueError("An active emergency session already exists for this patient")
 
@@ -188,8 +194,8 @@ class EmergencyService:
 
         active_same_case = [
             s for s in sessions.values()
-            if s.get("doctor_address", "").lower() == doctor_address.lower()
-            and s.get("patient_id") == patient_id
+            if s.get("doctor_address", "").lower() == doctor_address_normalized
+            and (s.get("patient_id") or "").strip() == patient_id_normalized
             and s.get("status") == "ACTIVE"
         ]
         if active_same_case:
@@ -380,6 +386,36 @@ class EmergencyService:
                 return True
 
         return False
+
+    def has_active_emergency_session(self, doctor_address: str, patient_id: str) -> bool:
+        """Return True only when an ACTIVE emergency session exists (ignores assignments)."""
+        if self.use_supabase and self.supabase:
+            self.supabase.expire_stale_emergency_sessions()
+            sessions = self.supabase.get_active_emergency_sessions(doctor_address, patient_id)
+            return len(sessions) > 0
+
+        sessions = self._load_sessions()
+        changed = self._expire_sessions(sessions)
+        if changed:
+            self._save_sessions(sessions)
+
+        for session in sessions.values():
+            if (
+                session.get("doctor_address", "").lower() == doctor_address.lower()
+                and session.get("patient_id") == patient_id
+                and session.get("status") == "ACTIVE"
+            ):
+                return True
+
+        return False
+
+    def get_access_mode(self, doctor_address: str, patient_id: str) -> Optional[str]:
+        """Resolve current access mode for doctor->patient read: EMERGENCY, NORMAL, or None."""
+        if self.has_active_emergency_session(doctor_address, patient_id):
+            return "EMERGENCY"
+        if self.is_doctor_assigned(doctor_address, patient_id):
+            return "NORMAL"
+        return None
 
     def list_sessions(
         self,

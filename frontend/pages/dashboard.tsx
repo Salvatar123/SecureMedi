@@ -23,6 +23,21 @@ interface AssignedPatient {
   assigned_at?: string;
 }
 
+interface PatientAccessEvent {
+  timestamp: string;
+  actor_address?: string;
+  actor_role?: string;
+  action: string;
+  resource_id?: string;
+  result: string;
+  details?: {
+    access_type?: string;
+    access_mode?: string;
+    endpoint?: string;
+    stage?: string;
+  };
+}
+
 function DashboardPage() {
   const router = useRouter();
   const { isAuthenticated, userRole, user } = useAuthStore();
@@ -40,7 +55,9 @@ function DashboardPage() {
   const [assignedPatients, setAssignedPatients] = useState<AssignedPatient[]>([]);
   const [reportPatientIdInput, setReportPatientIdInput] = useState("");
   const [reportPatientId, setReportPatientId] = useState("");
+  const [reportAccessType, setReportAccessType] = useState<"NORMAL" | "EMERGENCY">("NORMAL");
   const [reportAccessLockedMessage, setReportAccessLockedMessage] = useState<string | null>(null);
+  const [patientAccessHistory, setPatientAccessHistory] = useState<PatientAccessEvent[]>([]);
   const effectiveReportPatientId =
     userRole === "DOCTOR"
       ? reportPatientId.trim()
@@ -97,8 +114,9 @@ function DashboardPage() {
     if (isAssignedPatient) {
       setReportPatientIdInput(trimmedPatientId);
       setReportPatientId(trimmedPatientId);
+      setReportAccessType("EMERGENCY");
       setReportAccessLockedMessage(null);
-      toast.success("Patient is already assigned. Opened normal report access.");
+      toast.success("Patient is already assigned. Report opened from emergency access panel.");
       return;
     }
     
@@ -129,6 +147,7 @@ function DashboardPage() {
       setActiveEmergencySession(activateResponse);
       setReportPatientIdInput(trimmedPatientId);
       setReportPatientId(trimmedPatientId);
+      setReportAccessType("EMERGENCY");
       setReportAccessLockedMessage(null);
       toast.success("Emergency session activated.");
     } catch (error: any) {
@@ -137,8 +156,9 @@ function DashboardPage() {
       if (message.includes("already assigned")) {
         setReportPatientIdInput(trimmedPatientId);
         setReportPatientId(trimmedPatientId);
+        setReportAccessType("EMERGENCY");
         setReportAccessLockedMessage(null);
-        toast.success("Patient is already assigned. Opened normal report access.");
+        toast.success("Patient is already assigned. Report opened from emergency access panel.");
         return;
       }
       toast.error(message);
@@ -165,6 +185,7 @@ function DashboardPage() {
 
       if (response?.success) {
         setActiveEmergencySession(null);
+        setReportAccessType("NORMAL");
         setEmergencyCloseNote("");
         toast.success("Emergency session closed.");
       } else {
@@ -206,7 +227,7 @@ function DashboardPage() {
 
         const reportId = effectiveReportPatientId;
         const historyPromise = userRole === "DOCTOR"
-          ? apiClient.getPatientVitals(reportId, 100).catch((err: any) => {
+          ? apiClient.getPatientVitals(reportId, 100, reportAccessType).catch((err: any) => {
               const msg = err?.message || "";
               if (msg.includes("Emergency session required")) {
                 setReportAccessLockedMessage("Emergency session required before accessing this patient report.");
@@ -218,10 +239,15 @@ function DashboardPage() {
             })
           : apiClient.getVitalsHistory(100).catch(() => []);
 
-        const [historyData, alertsData, assignedPatientsData] = await Promise.all([
+        const accessHistoryPromise = userRole === "PATIENT" && user?.address
+          ? apiClient.getPatientAccessHistory(user.address, 100).catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] });
+
+        const [historyData, alertsData, assignedPatientsData, accessHistoryData] = await Promise.all([
           historyPromise,
           apiClient.getAlerts(userRole === "DOCTOR" ? reportId : undefined).catch(() => []),
           assignedPatientsPromise,
+          accessHistoryPromise,
         ]);
 
         if (userRole === "DOCTOR" && reportId && Array.isArray(historyData)) {
@@ -248,6 +274,10 @@ function DashboardPage() {
         } else {
           setAssignedPatients([]);
         }
+
+        if (userRole === "PATIENT") {
+          setPatientAccessHistory((accessHistoryData?.data || []) as PatientAccessEvent[]);
+        }
       } catch (error: any) {
         console.error("Dashboard data fetch error:", error);
         if ((error?.message || "").includes("Emergency session required")) {
@@ -267,7 +297,7 @@ function DashboardPage() {
     // Refresh every 5 seconds
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, router, user?.address, userRole, reportPatientId]);
+  }, [isAuthenticated, router, user?.address, userRole, reportPatientId, reportAccessType]);
 
   useEffect(() => {
     if (!activeEmergencySession?.session_id) {
@@ -418,6 +448,7 @@ function DashboardPage() {
                           return;
                         }
                         setReportAccessLockedMessage(null);
+                        setReportAccessType("NORMAL");
                         setReportPatientId(value);
                         toast.success(`Report loaded for ${value}`);
                       }}
@@ -429,6 +460,7 @@ function DashboardPage() {
                       onClick={() => {
                         setReportPatientId("");
                         setReportPatientIdInput("");
+                        setReportAccessType("NORMAL");
                       }}
                       className="bg-gray-200 text-gray-800 px-4 py-2 rounded-md"
                     >
@@ -478,6 +510,7 @@ function DashboardPage() {
                                   onClick={() => {
                                     setEmergencyPatientId(patient.patient_id);
                                     setReportPatientIdInput(patient.patient_id);
+                                    setReportAccessType("NORMAL");
                                     setReportPatientId(patient.patient_id);
                                   }}
                                   className="text-blue-600 hover:text-blue-800 font-medium"
@@ -485,6 +518,41 @@ function DashboardPage() {
                                   Open Report
                                 </button>
                               </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {userRole === "PATIENT" && (
+                <div className="metric-card">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold">Report Access History</h3>
+                    <span className="text-sm text-foreground/60">{patientAccessHistory.length} events</span>
+                  </div>
+                  {patientAccessHistory.length === 0 ? (
+                    <p className="text-sm text-foreground/60">No doctor has accessed your report yet.</p>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="px-3 py-2 text-left text-foreground/70">Time</th>
+                            <th className="px-3 py-2 text-left text-foreground/70">Doctor</th>
+                            <th className="px-3 py-2 text-left text-foreground/70">Access Type</th>
+                            <th className="px-3 py-2 text-left text-foreground/70">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {patientAccessHistory.map((event, idx) => (
+                            <tr key={`${event.timestamp}-${idx}`} className="border-b border-border/50 hover:bg-border/10">
+                              <td className="px-3 py-2">{new Date(event.timestamp).toLocaleString()}</td>
+                              <td className="px-3 py-2 font-mono text-xs">{event.actor_address || "-"}</td>
+                              <td className="px-3 py-2">{event.details?.access_type || event.details?.access_mode || (event.action === "EMERGENCY_ACCESS" ? "EMERGENCY" : "NORMAL")}</td>
+                              <td className="px-3 py-2">{(event.details?.stage || event.action || "").toString().replace(/_/g, " ").toUpperCase()}</td>
                             </tr>
                           ))}
                         </tbody>

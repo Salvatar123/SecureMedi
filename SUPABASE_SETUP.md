@@ -92,9 +92,58 @@ CREATE INDEX patients_wallet_idx ON patients(wallet_address);
 CREATE INDEX patients_name_idx ON patients(name);
 CREATE INDEX patients_email_idx ON patients(email);
 
+-- Create Emergency Access Sessions Table
+CREATE TABLE emergency_access_sessions (
+  id UUID PRIMARY KEY,
+  session_id UUID,
+  doctor_address TEXT NOT NULL,
+  patient_id TEXT NOT NULL,
+  reason TEXT,
+  severity TEXT,
+  expected_duration_min INTEGER,
+  status TEXT NOT NULL,
+  requested_at TIMESTAMP WITH TIME ZONE,
+  activated_at TIMESTAMP WITH TIME ZONE,
+  expires_at TIMESTAMP WITH TIME ZONE,
+  closed_at TIMESTAMP WITH TIME ZONE,
+  closure_note TEXT,
+  outcome TEXT,
+  activation_note TEXT,
+  blockchain_tx_hash TEXT,
+  created_ip TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX emergency_sessions_patient_idx ON emergency_access_sessions(patient_id);
+CREATE INDEX emergency_sessions_doctor_idx ON emergency_access_sessions(doctor_address);
+CREATE INDEX emergency_sessions_status_idx ON emergency_access_sessions(status);
+CREATE INDEX emergency_sessions_requested_idx ON emergency_access_sessions(requested_at DESC);
+
+-- Create persistent Audit Logs Table
+CREATE TABLE audit_logs (
+  id BIGSERIAL PRIMARY KEY,
+  timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
+  actor_address TEXT,
+  actor_role TEXT,
+  action TEXT NOT NULL,
+  resource_id TEXT,
+  resource_type TEXT,
+  result TEXT NOT NULL,
+  details JSONB DEFAULT '{}'::jsonb,
+  ip_address TEXT,
+  error_message TEXT
+);
+
+CREATE INDEX audit_logs_timestamp_idx ON audit_logs(timestamp DESC);
+CREATE INDEX audit_logs_resource_id_idx ON audit_logs(resource_id);
+CREATE INDEX audit_logs_actor_address_idx ON audit_logs(actor_address);
+CREATE INDEX audit_logs_action_idx ON audit_logs(action);
+
 -- Enable Row Level Security (RLS) - Optional but recommended
 ALTER TABLE doctors ENABLE ROW LEVEL SECURITY;
 ALTER TABLE patients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE emergency_access_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS Policies (Optional - for added security)
 -- Allow anonymous reads (for now, can be restricted later)
@@ -103,6 +152,21 @@ CREATE POLICY "Enable read access for all users" ON doctors
 
 CREATE POLICY "Enable read access for all users" ON patients
   FOR SELECT USING (true);
+
+CREATE POLICY "Enable read access for all users" ON emergency_access_sessions
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable read access for all users" ON audit_logs
+  FOR SELECT USING (true);
+
+CREATE POLICY "Enable insert access for all users" ON emergency_access_sessions
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "Enable update access for all users" ON emergency_access_sessions
+  FOR UPDATE USING (true);
+
+CREATE POLICY "Enable insert access for all users" ON audit_logs
+  FOR INSERT WITH CHECK (true);
 ```
 
 ### Step 5: Install Dependencies

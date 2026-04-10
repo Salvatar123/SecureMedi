@@ -172,10 +172,31 @@ async def get_assigned_patients(doctor_address: str, request: Request = None):
 
 @router.post("/{doctor_address}/access-patient/{patient_id}")
 @require_role("DOCTOR")
-async def log_patient_access(doctor_address: str, patient_id: str, access_type: str = "NORMAL", reason: str = "", request: Request = None):
+async def log_patient_access(doctor_address: str, patient_id: str, request: Request = None):
     """Log doctor's access to patient record (doctors only)"""
     try:
         user = get_current_user(request)
+
+        body = {}
+        try:
+            body = await request.json()
+            if not isinstance(body, dict):
+                body = {}
+        except Exception:
+            body = {}
+
+        # Accept both JSON body and query params for compatibility.
+        access_type = (
+            body.get("access_type")
+            or request.query_params.get("access_type")
+            or "NORMAL"
+        )
+        reason = (
+            body.get("reason")
+            or request.query_params.get("reason")
+            or ""
+        )
+        access_type = str(access_type).upper()
         
         # Doctors can only log access for themselves
         if user["address"] != doctor_address:
@@ -204,6 +225,7 @@ async def log_patient_access(doctor_address: str, patient_id: str, access_type: 
         return {
             "success": True,
             "message": "Access logged",
+            "access_type": access_type,
             "timestamp": datetime.now().isoformat()
         }
     except HTTPException:

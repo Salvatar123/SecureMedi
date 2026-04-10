@@ -8,6 +8,7 @@ from app.models.health import HealthData, HealthStatus
 from app.services.health_service import HealthService
 from app.services.emergency_service import EmergencyService
 from app.middleware.rbac import require_role, require_self_or_role, get_current_user
+from app.services.audit_service import AuditService, AuditAction, AuditResult
 
 router = APIRouter(prefix="/api/patients", tags=["patients"])
 health_service = HealthService()
@@ -50,14 +51,23 @@ async def get_patient_record(patient_id: str, request: Request):
         if user["role"] == "PATIENT" and user["address"] != patient_id:
             raise HTTPException(status_code=403, detail="Cannot access other patient's data")
 
-        if user["role"] == "DOCTOR" and not emergency_service.has_active_access(user["address"], patient_id):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Emergency session required",
-                    "code": "EMERGENCY_SESSION_REQUIRED",
-                },
-            )
+        requested_access_type = (request.query_params.get("access_type") or "").strip().upper()
+        if requested_access_type not in {"NORMAL", "EMERGENCY"}:
+            requested_access_type = ""
+
+        access_mode = "SELF"
+        access_type_for_log = "SELF"
+        if user["role"] == "DOCTOR":
+            access_mode = emergency_service.get_access_mode(user["address"], patient_id)
+            if not access_mode:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "message": "Emergency session required",
+                        "code": "EMERGENCY_SESSION_REQUIRED",
+                    },
+                )
+            access_type_for_log = requested_access_type or access_mode
         
         # TODO: Add actual patient lookup from registry
         patient_info = PatientInfo(patient_id=patient_id)
@@ -67,6 +77,21 @@ async def get_patient_record(patient_id: str, request: Request):
         
         history = health_service.get_latest_health_data(limit=100)
         
+        if user["role"] == "DOCTOR":
+            AuditService.log_event(
+                action=AuditAction.LOG_PATIENT_ACCESS,
+                actor_address=user["address"],
+                actor_role=user["role"],
+                resource_id=patient_id,
+                resource_type="PATIENT_DATA",
+                result=AuditResult.SUCCESS,
+                details={
+                    "access_mode": access_mode,
+                    "access_type": access_type_for_log,
+                    "endpoint": "/api/patients/{patient_id}",
+                },
+            )
+
         return PatientRecord(
             patient_info=patient_info,
             latest_vitals=latest,
@@ -91,14 +116,23 @@ async def get_patient_vitals(patient_id: str, limit: int = 100, request: Request
         if user["role"] == "PATIENT" and user["address"] != patient_id:
             raise HTTPException(status_code=403, detail="Cannot access other patient's vitals")
 
-        if user["role"] == "DOCTOR" and not emergency_service.has_active_access(user["address"], patient_id):
-            raise HTTPException(
-                status_code=403,
-                detail={
-                    "message": "Emergency session required",
-                    "code": "EMERGENCY_SESSION_REQUIRED",
-                },
-            )
+        requested_access_type = (request.query_params.get("access_type") or "").strip().upper()
+        if requested_access_type not in {"NORMAL", "EMERGENCY"}:
+            requested_access_type = ""
+
+        access_mode = "SELF"
+        access_type_for_log = "SELF"
+        if user["role"] == "DOCTOR":
+            access_mode = emergency_service.get_access_mode(user["address"], patient_id)
+            if not access_mode:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "message": "Emergency session required",
+                        "code": "EMERGENCY_SESSION_REQUIRED",
+                    },
+                )
+            access_type_for_log = requested_access_type or access_mode
         
         if limit < 1:
             limit = 1
@@ -106,6 +140,21 @@ async def get_patient_vitals(patient_id: str, limit: int = 100, request: Request
             limit = 500
 
         data = health_service.get_latest_health_data(limit)
+        if user["role"] == "DOCTOR":
+            AuditService.log_event(
+                action=AuditAction.LOG_PATIENT_ACCESS,
+                actor_address=user["address"],
+                actor_role=user["role"],
+                resource_id=patient_id,
+                resource_type="PATIENT_DATA",
+                result=AuditResult.SUCCESS,
+                details={
+                    "access_mode": access_mode,
+                    "access_type": access_type_for_log,
+                    "endpoint": "/api/patients/{patient_id}/vitals",
+                    "limit": limit,
+                },
+            )
         if data:
             return data
 

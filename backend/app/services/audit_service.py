@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, List, Any
 from enum import Enum
 from dataclasses import asdict, dataclass
+from config.settings import get_settings
+from app.services.supabase_service import SupabaseService
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +73,53 @@ class AuditService:
     # In-memory audit log (will be moved to database in Phase 5)
     _audit_logs: List[AuditLog] = []
     _max_logs = 10000  # Limit to prevent memory bloat
+    _supabase: Optional[SupabaseService] = None
+    _use_supabase: bool = False
+    _supabase_initialized: bool = False
+
+    @classmethod
+    def _infer_access_type(
+        cls,
+        action: AuditAction,
+        details: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """Best-effort normalization for access classification."""
+        payload = details or {}
+        explicit = payload.get("access_type") or payload.get("access_mode")
+        if explicit:
+            return str(explicit).upper()
+
+        if action == AuditAction.EMERGENCY_ACCESS:
+            return "EMERGENCY"
+
+        if action in {
+            AuditAction.LOG_PATIENT_ACCESS,
+            AuditAction.VIEW_PATIENT_DATA,
+            AuditAction.VIEW_PATIENT_VITALS,
+        }:
+            return "NORMAL"
+
+        return None
+
+    @classmethod
+    def _ensure_supabase(cls):
+        if cls._supabase_initialized:
+            return
+
+        cls._supabase_initialized = True
+        settings = get_settings()
+        if not (settings.ENABLE_SUPABASE and settings.SUPABASE_URL and settings.SUPABASE_KEY):
+            return
+
+        try:
+            cls._supabase = SupabaseService(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            cls._use_supabase = cls._supabase.audit_table_available()
+            if not cls._use_supabase:
+                logger.warning("Supabase audit table unavailable; using in-memory audit logs")
+        except Exception as exc:
+            cls._supabase = None
+            cls._use_supabase = False
+            logger.warning(f"Supabase audit initialization failed: {exc}")
     
     @classmethod
     def log_event(
@@ -117,6 +166,15 @@ class AuditService:
         
         # Add to in-memory log
         cls._audit_logs.append(log_entry)
+
+        # Persist to Supabase when configured/available.
+        cls._ensure_supabase()
+        if cls._use_supabase and cls._supabase:
+            payload = asdict(log_entry)
+            inferred_access_type = cls._infer_access_type(action, details)
+            if inferred_access_type:
+                payload["access_type"] = inferred_access_type
+            cls._supabase.create_audit_log(payload)
         
         # Trim old logs if exceeding limit
         if len(cls._audit_logs) > cls._max_logs:
@@ -158,7 +216,46 @@ class AuditService:
         Returns:
             Tuple of (filtered_logs, total_count)
         """
-        # Filter logs
+        cls._ensure_supabase()
+
+        # Prefer Supabase source for durability. Fallback to in-memory if unavailable.
+        if cls._use_supabase and cls._supabase:
+            result = cls._supabase.list_audit_logs(
+                actor_address=actor_address,
+                action=action,
+                resource_id=resource_id,
+                limit=limit,
+                offset=offset,
+            )
+            if result.get("success"):
+                rows = result.get("data", [])
+                logs = [
+                    AuditLog(
+                        timestamp=row.get("timestamp", datetime.now(timezone.utc).isoformat()),
+                        actor_address=row.get("actor_address"),
+                        actor_role=row.get("actor_role"),
+                        action=row.get("action", ""),
+                        resource_id=row.get("resource_id"),
+                        resource_type=row.get("resource_type"),
+                        result=row.get("result", "SUCCESS"),
+                        details=(
+                            {
+                                **(row.get("details") or {}),
+                                **(
+                                    {"access_type": row.get("access_type")}
+                                    if row.get("access_type") and not (row.get("details") or {}).get("access_type")
+                                    else {}
+                                ),
+                            }
+                        ),
+                        ip_address=row.get("ip_address"),
+                        error_message=row.get("error_message"),
+                    )
+                    for row in rows
+                ]
+                return logs, int(result.get("total", len(logs)))
+
+        # Filter logs (in-memory fallback)
         filtered = cls._audit_logs
         
         if actor_address:
