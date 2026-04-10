@@ -50,6 +50,11 @@ class Settings(BaseSettings):
     SUPABASE_KEY: Optional[str] = None
     ENABLE_SUPABASE: bool = False
 
+    # ============== CORS ==============
+    # Comma-separated list, e.g. "https://app.vercel.app,https://mydomain.com"
+    CORS_ALLOWED_ORIGINS: Optional[str] = None
+    CORS_ALLOWED_ORIGIN_REGEX: Optional[str] = None
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

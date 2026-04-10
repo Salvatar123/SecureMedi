@@ -9,8 +9,12 @@ import logging
 # Add parent paths for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../"))
 
-from services.logger_service import LoggerService
-from services.detector_service import DetectorService
+try:
+    from services.logger_service import LoggerService
+    from services.detector_service import DetectorService
+except ModuleNotFoundError:
+    LoggerService = None
+    DetectorService = None
 from app.models.health import HealthData, Alert, HealthStatus
 
 logger = logging.getLogger(__name__)
@@ -21,6 +25,12 @@ class HealthService:
     
     def __init__(self):
         """Initialize services"""
+        if LoggerService is None or DetectorService is None:
+            logger.warning("Root services package not available; health service running in fallback mode")
+            self.logger_service = None
+            self.detector_service = None
+            return
+
         try:
             self.logger_service = LoggerService()
             self.detector_service = DetectorService()

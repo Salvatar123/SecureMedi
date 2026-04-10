@@ -12,7 +12,10 @@ from app.models.doctor import (
     EmergencyActivateRequest,
     EmergencyCloseRequest,
 )
-from services.blockchain_service import BlockchainService
+try:
+    from services.blockchain_service import BlockchainService
+except ModuleNotFoundError:
+    BlockchainService = None
 from app.middleware.rbac import require_role, get_current_user
 from app.services.audit_service import AuditService, AuditAction, AuditResult
 from app.services.emergency_service import EmergencyService
@@ -24,7 +27,7 @@ ASSIGNMENTS_FILE = "doctor_patient_assignments.json"
 
 # Initialize blockchain service with error handling
 try:
-    blockchain_service = BlockchainService()
+    blockchain_service = BlockchainService() if BlockchainService else None
 except Exception as e:
     import logging
     logger = logging.getLogger(__name__)

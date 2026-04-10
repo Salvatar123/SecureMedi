@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
+from config.settings import get_settings
 
 # Add backend to path to allow app imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -19,6 +20,27 @@ from app.middleware.audit import AuditMiddleware
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+def _build_cors_origins() -> list[str]:
+    default_origins = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ]
+    configured = []
+    if settings.CORS_ALLOWED_ORIGINS:
+        configured = [o.strip() for o in settings.CORS_ALLOWED_ORIGINS.split(",") if o.strip()]
+    # Preserve order while removing duplicates.
+    seen = set()
+    merged = []
+    for origin in default_origins + configured:
+        if origin not in seen:
+            seen.add(origin)
+            merged.append(origin)
+    return merged
 
 # Create FastAPI app
 app = FastAPI(
@@ -30,13 +52,11 @@ app = FastAPI(
 # CORS middleware for frontend communication (added first, executed last)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-    ],  # Update in production
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.[0-9]+\.[0-9]+)(:\d+)?",
+    allow_origins=_build_cors_origins(),
+    allow_origin_regex=(
+        settings.CORS_ALLOWED_ORIGIN_REGEX
+        or r"http://(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.[0-9]+\.[0-9]+)(:\d+)?"
+    ),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

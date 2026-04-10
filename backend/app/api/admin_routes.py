@@ -19,7 +19,10 @@ from app.services.supabase_service import SupabaseService
 from app.services.emergency_service import EmergencyService
 from app.services.wallet_service import get_wallet_service
 from config.settings import get_settings
-from services.blockchain_service import BlockchainService
+try:
+    from services.blockchain_service import BlockchainService
+except ModuleNotFoundError:
+    BlockchainService = None
 
 logger = logging.getLogger(__name__)
 
@@ -437,7 +440,7 @@ if settings.ENABLE_SUPABASE and settings.SUPABASE_URL and settings.SUPABASE_KEY:
 blockchain_service = None
 
 try:
-    blockchain_service = BlockchainService()
+    blockchain_service = BlockchainService() if BlockchainService else None
     logger.info("Blockchain service initialized for admin routes")
 except Exception as e:
     logger.warning(f"Blockchain service not available: {e}")
