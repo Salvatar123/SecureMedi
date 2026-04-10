@@ -6,9 +6,12 @@ import logging
 from typing import Optional, Tuple, Dict
 
 # Add parent paths
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../"))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../")))
 
-from blockchain.connector import BlockchainConnector
+try:
+    from blockchain.connector import BlockchainConnector
+except ModuleNotFoundError:
+    BlockchainConnector = None
 from app.models.auth import AuthResponse, UserRole
 from app.services.jwt_service import JWTService
 from app.services.audit_service import AuditService, AuditAction, AuditResult
@@ -26,11 +29,15 @@ class AuthService:
     
     def __init__(self):
         """Initialize blockchain connector and JWT service"""
-        try:
-            self.blockchain = BlockchainConnector()
-        except Exception as e:
-            logger.warning(f"Blockchain unavailable: {e}")
+        if BlockchainConnector is None:
+            logger.warning("Blockchain connector module not available; continuing without blockchain auth checks")
             self.blockchain = None
+        else:
+            try:
+                self.blockchain = BlockchainConnector()
+            except Exception as e:
+                logger.warning(f"Blockchain unavailable: {e}")
+                self.blockchain = None
 
         settings = get_settings()
         self.supabase = None
