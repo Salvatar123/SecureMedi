@@ -32,7 +32,7 @@ export const HealthCharts: React.FC<ChartsProps> = ({ data }) => {
     .slice()
     .reverse()
     .map((d) => ({
-      time: new Date(d.timestamp).toLocaleTimeString([], {
+      time: new Date(d.timestamp ?? new Date().toISOString()).toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
       }),

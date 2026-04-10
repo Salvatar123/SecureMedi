@@ -45,6 +45,11 @@ class Settings(BaseSettings):
     ENABLE_BLOCKCHAIN: bool = True
     ENABLE_LOCAL_LOGGING: bool = True
 
+    # ============== SUPABASE ==============
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_KEY: Optional[str] = None
+    ENABLE_SUPABASE: bool = False
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

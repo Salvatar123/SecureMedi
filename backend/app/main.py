@@ -1,11 +1,20 @@
 """Main FastAPI Application"""
 
+import sys
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 
+# Add backend to path to allow app imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
 # Import routes
-from app.api import auth_routes, health_routes, patient_routes, doctor_routes
+from app.api import auth_routes, health_routes, patient_routes, doctor_routes, admin_routes, audit_routes
+
+# Import middleware
+from app.middleware.auth import AuthenticationMiddleware
+from app.middleware.audit import AuditMiddleware
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -18,20 +27,34 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# CORS middleware for frontend communication
+# CORS middleware for frontend communication (added first, executed last)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:3001"],  # Update in production
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],  # Update in production
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|0\.0\.0\.0|169\.254\.[0-9]+\.[0-9]+)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Audit middleware (logs all requests/responses on protected endpoints)
+app.add_middleware(AuditMiddleware)
+
+# Authentication middleware (must be added before CORS, validates JWT tokens)
+app.add_middleware(AuthenticationMiddleware)
 
 # Include routes
 app.include_router(auth_routes.router)
 app.include_router(health_routes.router)
 app.include_router(patient_routes.router)
 app.include_router(doctor_routes.router)
+app.include_router(admin_routes.router)
+app.include_router(audit_routes.router)
 
 
 @app.get("/")

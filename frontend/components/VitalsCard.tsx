@@ -31,6 +31,9 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ data, isLive = true }: V
     }
   };
 
+  const safeStatus = data.status || "NORMAL";
+  const safeTimestamp = data.timestamp || new Date().toISOString();
+
   return (
     <div className="metric-card space-y-4">
       <div className="flex justify-between items-center">
@@ -73,11 +76,11 @@ export const VitalsCard: React.FC<VitalsCardProps> = ({ data, isLive = true }: V
       </div>
 
       <div className="pt-2 border-t border-border flex items-center justify-between">
-        <span className={`text-sm font-semibold ${getStatusColor(data.status)}`}>
-          {data.status}
+        <span className={`text-sm font-semibold ${getStatusColor(safeStatus)}`}>
+          {safeStatus}
         </span>
         <span className="text-xs text-foreground/50">
-          {new Date(data.timestamp).toLocaleTimeString()}
+          {new Date(safeTimestamp).toLocaleTimeString()}
         </span>
       </div>
     </div>

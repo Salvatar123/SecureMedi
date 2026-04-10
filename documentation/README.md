@@ -230,7 +230,40 @@ Dashboard opens at: `http://localhost:8501`
 
 ---
 
-## 🎬 Quick Demo
+## 🎬 Quick Start (New Way - Recommended)
+
+### One Command Startup
+
+Start both backend and frontend automatically:
+
+**Windows PowerShell:**
+```powershell
+.\START_ALL.ps1
+```
+
+**Windows Command Prompt:**
+```batch
+START_ALL.bat
+```
+
+**Linux/macOS:**
+```bash
+./START_ALL.sh
+```
+
+This will:
+1. ✅ Start FastAPI backend on http://localhost:8000
+2. ✅ Wait for it to be ready
+3. ✅ Start Next.js frontend on http://localhost:3000
+4. ✅ Show API docs at http://localhost:8000/docs
+
+**See [QUICK_START.md](../QUICK_START.md) and [STARTUP_GUIDE.md](../STARTUP_GUIDE.md) for more options.**
+
+---
+
+## 🎬 Quick Demo (Manual Setup)
+
+If you prefer manual setup or the startup scripts don't work:
 
 1. Start Ganache
 2. Deploy smart contract and update `.env`

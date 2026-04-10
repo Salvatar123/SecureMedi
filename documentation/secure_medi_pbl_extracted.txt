@@ -1,0 +1,316 @@
+SECURE MEDI
+Neel Butala Arnav Anand Jayesh Dhoot
+
+LITERATURE REVIEW
+Blockchain in Healthcare Medical Data Security Access Control Systems
+• Ekblaw et al. (2016) -
+MedRec: Blockchain-based
+medical data management
+• Azaria et al. (2016) -
+Decentralized access control
+for patient records
+• Peterson et al. (2016) -
+Blockchain applications in
+health information exchange
+• HIPAA Security Rule -
+Standards for protecting
+patient health information
+• Fernández-Alemán et al.
+(2013) - Security and privacy in
+EHR systems
+• Kruse et al. (2017) -
+Healthcare data breach
+analysis and prevention
+• Zhang & Liu (2010) - Role-
+based access control in
+healthcare
+• Hu et al. (2014) - Attribute-
+Based Access Control (ABAC)
+frameworks
+• Xiao et al. (2013) -
+Emergency access protocols
+in medical systems
+Key Gap: Existing solutions lack emergency access protocols with automatic expiration and
+comprehensive audit trails that are tamper-proof
+
+Medical records
+accessed without patient
+knowledge or consent
+UNAUTHORIZED
+ACCESS
+NO AUDIT TRAIL
+Inability to track who
+accessed patient data
+and when
+Critical delays in
+accessing patient
+records during
+emergencies
+Emergency Delays
+The Problem
+
+Data breach incidents have consistently risen from
+2019 to 2023, indicating growing security gaps in
+traditional systems. Rising Number of Affected
+Individuals Each breach now impacts a larger volume
+of users, increasing financial loss, legal risk, and loss
+of trust.
+DATA BREACHES
+10 million
+26
+24
+22
+20
+18
+16
+14
+12
+10
+8
+6
+4
+2
+0
+2019 2020 2021 2022 2023
+150% increase in affected individuals
+200%  growth in data breaches from 2019–2023.
+
+Introduction
+WHAT IS SECUREMEDI
+A decentralised platform that gives patients complete
+control over their medical data
+while ensuring secure, auditable
+access for healthcare providers.
+SecureMedi doesn’t just monitor
+health — it gives patients
+ownership, transparency,
+trust over their medical data
+and
+
+KEY FEATURES
+Tamper-Proof Access
+ 
+Complete
+Transparency For
+Patients
+ 
+Smart Access Key
+Management
+ 
+Everyaccess attempt is
+permanently recorded on the
+blockchain, creating an
+immutable audit trail that
+cannot be altered or deleted.
+Patients can viewtheircomplete
+access history including who
+accessed their records, when, and
+under what authorization.
+Doctors receivecryptographic
+access keys linked to their
+credentials. Permanent keys for
+authorized providers, temporary
+keys for emergencies.
+
+SYSTEMARCHITECTURE
+ 
+/1
+/2
+/3
+Streamlit Web Dashboard • Doctor Access Portal •
+Patient Audit Portal • Admin Management Interface
+Smart Contract (Solidity) • Access Authentication •
+Immutable Audit Logs • Key Generation & Verification
+Web3.py Integration • Python API • Local Data Storage
+(CSV) • Access Control Logic
+APPLICATION
+LAYER
+BLOCKCHAIN
+LAYER
+BACKEND LAYER
+
+HOW IT WORKS?
+Admin registers patients with
+unique blockchain wallet
+addresses
+Healthcare providers request
+access keys through the
+platform
+Smart contract generates
+permanent or temporary
+access keys based on
+authorization level
+/1
+Patient
+Registration
+/2
+Doctor
+Authentication
+/3
+Access Key
+Generation
+
+HOW IT WORKS?
+Doctors use cryptographic
+keys to access patient
+records securely
+Every access is recorded on-
+chain with timestamp,
+accessor ID, and access type
+Patients review complete
+access history through their
+dedicated portal
+/4
+Data Access
+/5
+Blockchain
+Logging
+/6
+Patient Audit
+
+EMERGENCY ACCESSFEATURE
+How Emergency Access Works:
+ 
+Benefits:
+Emergencyrespondersrequest temporary access Smart
+contract generates time-limited key (e.g., 24 hours) Access
+automatically expires after set duration All emergency
+access logged on blockchain Patients notified of
+emergency access event
+Immediate access in life-threatening situations
+No permanent access granted
+Automatic security restoration
+Complete audit trail maintained
+Patient privacy protected long-term
+
+BACKEND
+FRONTEND
+SECURITY
+BLOCKCHAIN
+• Python 3.x
+• Web3 Integration
+• CSV Data Storage
+• Streamlit Dashboard
+• Real-time Visualisation
+• Interactive UI
+• Ethereum Network
+• Solidity Smart Contracts
+• Web3.py
+• Cryptographic Keys
+• Role-Based Access Control
+• Immutable Logging
+TECH STACK
+
+Real-time health
+monitoring with
+connected wearables
+and medical IoT devices.
+Blockchain-based
+prescription tracking
+and medication history
+management
+Integration with Aadhaar
+for secure biometric
+authentication and
+identity verification
+Future Enhancem ents
+
+BENEFITS:
+For Patients:
+Complete
+transparency of who
+accessed their data
+Control over medical
+information
+Trust through
+immutable audit trails
+Peace of mind about
+privacy
+For Healthcare
+Systems: For Healthcare
+Providers
+Enhanced data
+security
+Reduced data
+breaches
+Improved patient
+satisfaction
+Innovation in
+healthcare IT
+Streamlined secure
+access
+Emergency
+protocols built-in
+Reduced liability
+risks
+Compliance with
+regulations
+
+TIMELINE
+7.Backend
+Integration
+Objective: Connect
+blockchain functionality
+with real-world
+application logic.
+5.Frontend
+Objective: Makethesystem
+ 
+usableand user-
+friendly.Fully interactive,
+clickable UI
+Real-time visualizationof
+blockchain accesslogs
+1.Foundation
+Objective: Establish a
+strong understanding of
+the healthcare problem
+and define the system’s
+purpose.
+2.Technology
+Basics
+Objective: Get
+comfortab le with all
+core technologies
+used in the system.
+3.System
+Architecture
+Objective: Define how all
+system componentswill
+interact beforeheavy
+development begins.
+4.Smart Contract
+Development
+Objective: Implement
+the core blockchain
+logic that powers
+SecureMedi.
+6.Emergency
+Access
+Feature
+ Objective: Implement
+SecureMedi’s most
+critical and
+differentiating feature.
+
+Product Photos:
+
+REFERENCES
+ Azaria,A.,Ekblaw,A.,Vieira,T.,&Lippman,A. (2016).MedRec:UsingBlockchainforMedicalDataAccess
+andPermissionManagement.IEEEOpen&Big DataConference.
+Fernandez-Aleman, J. L.,Señor,I.C.,Lozoya, P. Á. O.,&Toval,A.(2013).Securityandprivacyinelectronic
+health records: A systematicliterature review. JournalofBiomedicalInformatics,46(3),541–562.
+Kuo, T. T., Kim, H. E., & Ohno-Machado, L. (2017). Blockchaindistributedledgertechnologies forbiomedical
+and health care applications. Journal of the American Medical InformaticsAssociation,24(6), 1211–1220.
+Xia, Q., Sifah, E. B., Asamoah, K. O., Gao, J., Du, X., & Guizani, M. (2017). MeDShare: Trust-less medicaldata
+sharing among cloud service providers via blockchain. IEEE Access, 5, 14757–14767.
+Zhang, P., White, J., Schmidt, D. C., Lenz, G., & Rosenbloom, S. T. (2018). FHIRChain: Applying blockchain to
+securely and scalably share clinical data. Computational and Structural Biotechnology Journal, 16, 267–
+278.
+
+THANK YOU
+ 
+2427030072
+Jayesh Dhoot Arnav Anand
+24270301542427030157
+Neel Butala

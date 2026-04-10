@@ -9,7 +9,7 @@ __turbopack_load_page_chunks__("/login", [
   "static/chunks/0nn8_react-dom_083q-7l._.js",
   "static/chunks/0nn8_axios_lib_0_88efu._.js",
   "static/chunks/0nn8_0xci7lq._.js",
-  "static/chunks/[root-of-the-server]__118p9x_._.js",
+  "static/chunks/[root-of-the-server]__0ou-b7v._.js",
   "static/chunks/SecureMedi_frontend_pages_login_07xvfw~._.js",
-  "static/chunks/turbopack-SecureMedi_frontend_pages_login_0lyu8~-._.js"
+  "static/chunks/turbopack-SecureMedi_frontend_pages_login_0om~xkn._.js"
 ])

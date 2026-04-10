@@ -936,6 +936,48 @@ class ApiClient {
             key: privateKey
         });
     }
+    async refreshToken(refreshToken) {
+        try {
+            const response = await this.client.post("/api/auth/refresh", {
+                refresh_token: refreshToken
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "Failed to refresh token"
+            };
+        }
+    }
+    async logout(token) {
+        try {
+            const response = await this.client.post("/api/auth/logout", null, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "Logout failed"
+            };
+        }
+    }
+    async verifyToken(token) {
+        try {
+            const response = await this.client.post("/api/auth/verify", null, {
+                params: {
+                    token
+                }
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                valid: false
+            };
+        }
+    }
     // Health endpoints
     async getLatestVitals() {
         return this.client.get("/api/health/vitals/latest");
@@ -987,6 +1029,23 @@ class ApiClient {
             access_type: accessType,
             reason
         });
+    }
+    async emergencyAccess(patientId, key) {
+        return this.client.post("/api/doctors/emergency-access", {
+            patient_id: patientId,
+            key
+        });
+    }
+    async requestAccessKey() {
+        try {
+            const response = await this.client.post("/api/auth/request-key");
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "An error occurred while requesting an access key."
+            };
+        }
     }
 }
 const apiClient = new ApiClient();
@@ -1041,6 +1100,29 @@ function DashboardPage() {
     const [alerts, setAlerts] = (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useState"])([]);
     const [stats, setStats] = (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useState"])(null);
     const [loading, setLoading] = (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useState"])(true);
+    const [emergencyPatientId, setEmergencyPatientId] = (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useState"])("");
+    const [emergencyPatientData, setEmergencyPatientData] = (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useState"])(null);
+    const handleEmergencyAccess = async ()=>{
+        if (!emergencyPatientId) {
+            __TURBOPACK__imported__module__$5b$externals$5d2f$react$2d$hot$2d$toast__$5b$external$5d$__$28$react$2d$hot$2d$toast$2c$__esm_import$2c$__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$29$__["default"].error("Please enter a patient ID.");
+            return;
+        }
+        try {
+            // In a real scenario, a secure key would be generated and used.
+            // For this version, we'll send a placeholder key.
+            const randomKey = "emergency_key_" + Math.random().toString(36).substring(2);
+            const response = await __TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$lib$2f$api$2e$ts__$5b$ssr$5d$__$28$ecmascript$29$__["apiClient"].emergencyAccess(emergencyPatientId, randomKey);
+            if (response.data.success) {
+                setEmergencyPatientData(response.data.patient_data);
+                __TURBOPACK__imported__module__$5b$externals$5d2f$react$2d$hot$2d$toast__$5b$external$5d$__$28$react$2d$hot$2d$toast$2c$__esm_import$2c$__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$29$__["default"].success("Emergency access granted.");
+            } else {
+                __TURBOPACK__imported__module__$5b$externals$5d2f$react$2d$hot$2d$toast__$5b$external$5d$__$28$react$2d$hot$2d$toast$2c$__esm_import$2c$__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$29$__["default"].error("Emergency access failed.");
+            }
+        } catch (error) {
+            console.error("Emergency access error:", error);
+            __TURBOPACK__imported__module__$5b$externals$5d2f$react$2d$hot$2d$toast__$5b$external$5d$__$28$react$2d$hot$2d$toast$2c$__esm_import$2c$__$5b$project$5d2f$SecureMedi$2f$frontend$2f$node_modules$2f$react$2d$hot$2d$toast$29$__["default"].error("Failed to get emergency access.");
+        }
+    };
     (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react__$5b$external$5d$__$28$react$2c$__cjs$29$__["useEffect"])(()=>{
         if (!isAuthenticated) {
             router.push("/login");
@@ -1083,17 +1165,17 @@ function DashboardPage() {
                     children: "Dashboard - SecureMedi"
                 }, void 0, false, {
                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                    lineNumber: 65,
+                    lineNumber: 89,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                lineNumber: 64,
+                lineNumber: 88,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$Header$2e$tsx__$5b$ssr$5d$__$28$ecmascript$29$__["Header"], {}, void 0, false, {
                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                lineNumber: 68,
+                lineNumber: 92,
                 columnNumber: 7
             }, this),
             /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1112,7 +1194,7 @@ function DashboardPage() {
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 74,
+                                    lineNumber: 98,
                                     columnNumber: 13
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("p", {
@@ -1120,13 +1202,13 @@ function DashboardPage() {
                                     children: "Real-time health monitoring dashboard"
                                 }, void 0, false, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 77,
+                                    lineNumber: 101,
                                     columnNumber: 13
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                            lineNumber: 73,
+                            lineNumber: 97,
                             columnNumber: 11
                         }, this),
                         loading ? /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1135,22 +1217,96 @@ function DashboardPage() {
                                 className: "animate-spin rounded-full h-12 w-12 border-b-2 border-primary"
                             }, void 0, false, {
                                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                lineNumber: 82,
+                                lineNumber: 106,
                                 columnNumber: 15
                             }, this)
                         }, void 0, false, {
                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                            lineNumber: 81,
+                            lineNumber: 105,
                             columnNumber: 13
                         }, this) : /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
                             className: "space-y-8",
                             children: [
+                                role === "DOCTOR" && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
+                                    className: "bg-card p-6 rounded-lg shadow-md",
+                                    children: [
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("h2", {
+                                            className: "text-2xl font-bold text-foreground mb-4",
+                                            children: "Emergency Access"
+                                        }, void 0, false, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 113,
+                                            columnNumber: 19
+                                        }, this),
+                                        /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
+                                            className: "flex space-x-4",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("input", {
+                                                    type: "text",
+                                                    placeholder: "Enter Patient ID",
+                                                    className: "flex-grow p-2 border rounded-md bg-background text-foreground",
+                                                    value: emergencyPatientId,
+                                                    onChange: (e)=>setEmergencyPatientId(e.target.value)
+                                                }, void 0, false, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 115,
+                                                    columnNumber: 21
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("button", {
+                                                    onClick: handleEmergencyAccess,
+                                                    className: "bg-primary text-primary-foreground px-4 py-2 rounded-md",
+                                                    children: "Generate & Access"
+                                                }, void 0, false, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 122,
+                                                    columnNumber: 21
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 114,
+                                            columnNumber: 19
+                                        }, this),
+                                        emergencyPatientData && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
+                                            className: "mt-4",
+                                            children: [
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("h3", {
+                                                    className: "text-xl font-bold",
+                                                    children: [
+                                                        "Patient: ",
+                                                        emergencyPatientData.name
+                                                    ]
+                                                }, void 0, true, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 131,
+                                                    columnNumber: 23
+                                                }, this),
+                                                /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$VitalsCard$2e$tsx__$5b$ssr$5d$__$28$ecmascript$29$__["VitalsCard"], {
+                                                    data: emergencyPatientData.vitals,
+                                                    isLive: false
+                                                }, void 0, false, {
+                                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                                    lineNumber: 132,
+                                                    columnNumber: 23
+                                                }, this)
+                                            ]
+                                        }, void 0, true, {
+                                            fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                            lineNumber: 130,
+                                            columnNumber: 21
+                                        }, this)
+                                    ]
+                                }, void 0, true, {
+                                    fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
+                                    lineNumber: 112,
+                                    columnNumber: 17
+                                }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$VitalsCard$2e$tsx__$5b$ssr$5d$__$28$ecmascript$29$__["VitalsCard"], {
                                     data: vitals,
                                     isLive: true
                                 }, void 0, false, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 87,
+                                    lineNumber: 139,
                                     columnNumber: 15
                                 }, this),
                                 stats && /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1163,7 +1319,7 @@ function DashboardPage() {
                                                     children: key.replace("_", " ")
                                                 }, void 0, false, {
                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                    lineNumber: 96,
+                                                    lineNumber: 148,
                                                     columnNumber: 25
                                                 }, this),
                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("p", {
@@ -1171,18 +1327,18 @@ function DashboardPage() {
                                                     children: value
                                                 }, void 0, false, {
                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                    lineNumber: 97,
+                                                    lineNumber: 149,
                                                     columnNumber: 25
                                                 }, this)
                                             ]
                                         }, key, true, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 95,
+                                            lineNumber: 147,
                                             columnNumber: 23
                                         }, this))
                                 }, void 0, false, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 91,
+                                    lineNumber: 143,
                                     columnNumber: 17
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1192,20 +1348,20 @@ function DashboardPage() {
                                             children: "Active Alerts"
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 105,
+                                            lineNumber: 157,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$AlertsList$2e$tsx__$5b$ssr$5d$__$28$ecmascript$29$__["AlertsList"], {
                                             alerts: alerts
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 106,
+                                            lineNumber: 158,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 104,
+                                    lineNumber: 156,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1215,20 +1371,20 @@ function DashboardPage() {
                                             children: "Health Trends"
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 111,
+                                            lineNumber: 163,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])(__TURBOPACK__imported__module__$5b$project$5d2f$SecureMedi$2f$frontend$2f$components$2f$HealthCharts$2e$tsx__$5b$ssr$5d$__$28$ecmascript$29$__["HealthCharts"], {
                                             data: history
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 112,
+                                            lineNumber: 164,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 110,
+                                    lineNumber: 162,
                                     columnNumber: 15
                                 }, this),
                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1239,7 +1395,7 @@ function DashboardPage() {
                                             children: "Recent Vitals"
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 117,
+                                            lineNumber: 169,
                                             columnNumber: 17
                                         }, this),
                                         /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("div", {
@@ -1256,7 +1412,7 @@ function DashboardPage() {
                                                                     children: "Time"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                    lineNumber: 122,
+                                                                    lineNumber: 174,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("th", {
@@ -1264,7 +1420,7 @@ function DashboardPage() {
                                                                     children: "Heart Rate"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                    lineNumber: 123,
+                                                                    lineNumber: 175,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("th", {
@@ -1272,7 +1428,7 @@ function DashboardPage() {
                                                                     children: "Temperature"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                    lineNumber: 124,
+                                                                    lineNumber: 176,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("th", {
@@ -1280,7 +1436,7 @@ function DashboardPage() {
                                                                     children: "SpO₂"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                    lineNumber: 125,
+                                                                    lineNumber: 177,
                                                                     columnNumber: 25
                                                                 }, this),
                                                                 /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("th", {
@@ -1288,18 +1444,18 @@ function DashboardPage() {
                                                                     children: "Status"
                                                                 }, void 0, false, {
                                                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                    lineNumber: 126,
+                                                                    lineNumber: 178,
                                                                     columnNumber: 25
                                                                 }, this)
                                                             ]
                                                         }, void 0, true, {
                                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                            lineNumber: 121,
+                                                            lineNumber: 173,
                                                             columnNumber: 23
                                                         }, this)
                                                     }, void 0, false, {
                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                        lineNumber: 120,
+                                                        lineNumber: 172,
                                                         columnNumber: 21
                                                     }, this),
                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("tbody", {
@@ -1311,7 +1467,7 @@ function DashboardPage() {
                                                                         children: new Date(vital.timestamp).toLocaleTimeString()
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                        lineNumber: 132,
+                                                                        lineNumber: 184,
                                                                         columnNumber: 27
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("td", {
@@ -1322,7 +1478,7 @@ function DashboardPage() {
                                                                         ]
                                                                     }, void 0, true, {
                                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                        lineNumber: 135,
+                                                                        lineNumber: 187,
                                                                         columnNumber: 27
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("td", {
@@ -1333,7 +1489,7 @@ function DashboardPage() {
                                                                         ]
                                                                     }, void 0, true, {
                                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                        lineNumber: 136,
+                                                                        lineNumber: 188,
                                                                         columnNumber: 27
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("td", {
@@ -1344,7 +1500,7 @@ function DashboardPage() {
                                                                         ]
                                                                     }, void 0, true, {
                                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                        lineNumber: 137,
+                                                                        lineNumber: 189,
                                                                         columnNumber: 27
                                                                     }, this),
                                                                     /*#__PURE__*/ (0, __TURBOPACK__imported__module__$5b$externals$5d2f$react$2f$jsx$2d$dev$2d$runtime__$5b$external$5d$__$28$react$2f$jsx$2d$dev$2d$runtime$2c$__cjs$29$__["jsxDEV"])("td", {
@@ -1354,57 +1510,57 @@ function DashboardPage() {
                                                                             children: vital.status
                                                                         }, void 0, false, {
                                                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                            lineNumber: 139,
+                                                                            lineNumber: 191,
                                                                             columnNumber: 29
                                                                         }, this)
                                                                     }, void 0, false, {
                                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                        lineNumber: 138,
+                                                                        lineNumber: 190,
                                                                         columnNumber: 27
                                                                     }, this)
                                                                 ]
                                                             }, idx, true, {
                                                                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                                lineNumber: 131,
+                                                                lineNumber: 183,
                                                                 columnNumber: 25
                                                             }, this))
                                                     }, void 0, false, {
                                                         fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                        lineNumber: 129,
+                                                        lineNumber: 181,
                                                         columnNumber: 21
                                                     }, this)
                                                 ]
                                             }, void 0, true, {
                                                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                                lineNumber: 119,
+                                                lineNumber: 171,
                                                 columnNumber: 19
                                             }, this)
                                         }, void 0, false, {
                                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                            lineNumber: 118,
+                                            lineNumber: 170,
                                             columnNumber: 17
                                         }, this)
                                     ]
                                 }, void 0, true, {
                                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                                    lineNumber: 116,
+                                    lineNumber: 168,
                                     columnNumber: 15
                                 }, this)
                             ]
                         }, void 0, true, {
                             fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                            lineNumber: 85,
+                            lineNumber: 109,
                             columnNumber: 13
                         }, this)
                     ]
                 }, void 0, true, {
                     fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                    lineNumber: 71,
+                    lineNumber: 95,
                     columnNumber: 9
                 }, this)
             }, void 0, false, {
                 fileName: "[project]/SecureMedi/frontend/pages/dashboard.tsx",
-                lineNumber: 70,
+                lineNumber: 94,
                 columnNumber: 7
             }, this)
         ]

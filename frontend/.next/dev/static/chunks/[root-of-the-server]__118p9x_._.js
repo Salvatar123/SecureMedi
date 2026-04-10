@@ -720,6 +720,48 @@ class ApiClient {
             key: privateKey
         });
     }
+    async refreshToken(refreshToken) {
+        try {
+            const response = await this.client.post("/api/auth/refresh", {
+                refresh_token: refreshToken
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "Failed to refresh token"
+            };
+        }
+    }
+    async logout(token) {
+        try {
+            const response = await this.client.post("/api/auth/logout", null, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "Logout failed"
+            };
+        }
+    }
+    async verifyToken(token) {
+        try {
+            const response = await this.client.post("/api/auth/verify", null, {
+                params: {
+                    token
+                }
+            });
+            return response.data;
+        } catch (error) {
+            return {
+                valid: false
+            };
+        }
+    }
     // Health endpoints
     async getLatestVitals() {
         return this.client.get("/api/health/vitals/latest");
@@ -771,6 +813,23 @@ class ApiClient {
             access_type: accessType,
             reason
         });
+    }
+    async emergencyAccess(patientId, key) {
+        return this.client.post("/api/doctors/emergency-access", {
+            patient_id: patientId,
+            key
+        });
+    }
+    async requestAccessKey() {
+        try {
+            const response = await this.client.post("/api/auth/request-key");
+            return response.data;
+        } catch (error) {
+            return {
+                success: false,
+                message: "An error occurred while requesting an access key."
+            };
+        }
     }
 }
 const apiClient = new ApiClient();

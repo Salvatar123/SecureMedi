@@ -24,9 +24,9 @@ def _ensure_web3():
         try:
             from web3 import Web3 as _Web3
             Web3 = _Web3
-        except ImportError as e:
+        except (ImportError, ModuleNotFoundError) as e:
             logger.error(f"Failed to import Web3: {e}")
-            raise
+            logger.warning("Web3/Blockchain functionality will not be available")
 
 
 class BlockchainService:
@@ -45,6 +45,10 @@ class BlockchainService:
         try:
             # Lazy load Web3
             _ensure_web3()
+            
+            if Web3 is None:
+                logger.warning("Web3 not available. Blockchain features will be disabled.")
+                return
             
             # Connect to blockchain network
             self.w3 = Web3(Web3.HTTPProvider(self.settings.GANACHE_URL))
@@ -76,7 +80,7 @@ class BlockchainService:
 
         except Exception as e:
             logger.error(f"Blockchain initialization failed: {e}")
-            raise
+            logger.warning("The application will continue without blockchain functionality")
 
     def generate_key(self) -> None:
         """Generate a new access key for the account."""
@@ -176,6 +180,14 @@ class BlockchainService:
             logger.info(f"Patient registered: {patient_id}")
         except Exception as e:
             logger.error(f"Failed to register patient: {e}")
+            raise
+
+    def is_patient(self, patient_id: str) -> bool:
+        """Check if a patient ID is registered on chain."""
+        try:
+            return self.contract.functions.isPatientRegistered(patient_id).call()
+        except Exception as e:
+            logger.error(f"Failed to check patient status: {e}")
             raise
 
     def get_access_logs(self, patient_id: str) -> Tuple[list, list, list]:

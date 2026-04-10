@@ -55,12 +55,36 @@ temp/
 
 # Node (if using any Node tools)
 node_modules/
+.next/
+.eslintcache
+out/
+dist/
+build/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.turbo/
 
-# Blockchain
-.ganache/
-ganache-db/
-contracts/build/
-artifacts/
+# Backend specific
+backend/.venv/
+backend/__pycache__/
+backend/*.log
+backend/.eggs/
+backend/.tox/
+
+# Environment files
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# PM2 & Process management
+.pm2/
+*.pid
+
+# IDE & Editor
+*.sublime-workspace
+*.sublime-project
 
 # Health/Medical Data (sensitive)
 *.csv
@@ -79,3 +103,16 @@ exports/
 # Pandas/Data Science
 .dask/
 dask-worker-space/
+
+# Runtime/generated project files
+doctor_patient_assignments.json
+wallets_assigned.json
+frontend/tsconfig.tsbuildinfo
+frontend/null
+
+# Generated keys
+config/jwt_private_key.pem
+config/jwt_public_key.pem
+
+# Root lockfile (frontend has its own lockfile)
+package-lock.json

@@ -43,6 +43,10 @@ class BlockchainConnector:
     def register_patient(self, patient_id: str, wallet: str) -> None:
         """Register a patient with their wallet."""
         return self._service.register_patient(patient_id, wallet)
+
+    def is_patient(self, patient_id: str) -> bool:
+        """Check if a patient ID is registered."""
+        return self._service.is_patient(patient_id)
     
     def get_access_logs(self, patient_id: str) -> Tuple[list, list, list]:
         """Get access logs for a patient."""
@@ -103,6 +107,11 @@ def is_doctor(address: str) -> bool:
 def register_patient(patient_id: str, wallet: str) -> None:
     """Register a patient with their wallet. (Backward compat wrapper)"""
     return _get_service().register_patient(patient_id, wallet)
+
+
+def is_patient(patient_id: str) -> bool:
+    """Check if a patient ID is registered. (Backward compat wrapper)"""
+    return _get_service().is_patient(patient_id)
 
 
 def get_access_logs(patient_id: str) -> Tuple[list, list, list]:

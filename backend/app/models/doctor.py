@@ -2,7 +2,7 @@
 
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional, List
+from typing import Optional
 
 
 class DoctorInfo(BaseModel):
@@ -23,6 +23,19 @@ class AccessLog(BaseModel):
 
 
 class EmergencyAccessRequest(BaseModel):
-    """Request model for emergency access"""
+    """Request model for creating an emergency access session"""
     patient_id: str
-    key: str
+    reason: str
+    severity: str = "CRITICAL"
+    expected_duration_min: int = 30
+
+
+class EmergencyActivateRequest(BaseModel):
+    """Request model for activating a pending emergency session"""
+    activation_note: Optional[str] = None
+
+
+class EmergencyCloseRequest(BaseModel):
+    """Request model for closing an active emergency session"""
+    closure_note: str
+    outcome: str = "UNKNOWN"

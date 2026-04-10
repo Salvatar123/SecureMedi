@@ -2,16 +2,27 @@
 
 import React from "react";
 import Link from "next/link";
-import { useAuthStore } from "@/lib/auth";
+import { useAuthStore } from "@/stores/authStore";
 import { useRouter } from "next/router";
+import { logout } from "@/lib/api";
+import toast from "react-hot-toast";
 
 export const Header: React.FC = () => {
-  const { isAuthenticated, role, logout } = useAuthStore();
+  const { isAuthenticated, userRole, user } = useAuthStore();
+  const logoutUser = useAuthStore((state) => state.logout);
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
-    router.push("/login");
+  const handleLogout = async () => {
+    try {
+      await logout();
+      await logoutUser();
+      toast.success("Logged out successfully");
+      router.push("/login");
+    } catch (error) {
+      console.error("Logout error:", error);
+      await logoutUser();
+      router.push("/login");
+    }
   };
 
   return (
@@ -30,12 +41,13 @@ export const Header: React.FC = () => {
           <div className="flex items-center space-x-4">
             {isAuthenticated ? (
               <>
-                <span className="text-sm text-foreground/70">
-                  Role: <span className="font-semibold">{role}</span>
-                </span>
+                <div className="text-right">
+                  <p className="text-sm font-semibold text-foreground">{user?.name || "User"}</p>
+                  <p className="text-xs text-foreground/60">{userRole}</p>
+                </div>
                 <button
                   onClick={handleLogout}
-                  className="px-4 py-2 bg-danger/20 text-danger rounded-lg hover:bg-danger/30 transition-colors text-sm font-medium"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-medium"
                 >
                   Logout
                 </button>

@@ -241,62 +241,94 @@ ls -Name logs/
 
 ## Running the Application
 
-You now have **3 terminal windows** running:
-1. **Terminal 1**: Ganache (blockchain) - KEEP RUNNING
-2. **Terminal 2**: Main Application (health monitoring)
-3. **Terminal 3**: Dashboard (web interface) - OPTIONAL
+### Recommended: Use Startup Scripts (Automatic)
 
-### Terminal 2: Start Main Application
+The easiest way - starts backend and frontend automatically in the correct order:
 
+**Windows PowerShell:**
 ```powershell
-# From project directory with venv activated
-python main.py
+.\START_ALL.ps1
 ```
 
-**Expected Output:**
-```
-2026-03-24 10:30:45,123 - config.settings - INFO - Configuration loaded...
-2026-03-24 10:30:45,234 - __main__ - INFO - 🚀 secureMedi System Started...
-2026-03-24 10:30:46,234 - __main__ - INFO - Vitals: {'heart': 75, 'temp': 37.2, 'spo2': 98}
-2026-03-24 10:30:46,235 - __main__ - INFO - Status: NORMAL
-2026-03-24 10:30:51,456 - services.detector_service - WARNING - Alert: Heart rate 112 > 110
-2026-03-24 10:30:51,457 - __main__ - INFO - Vitals: {'heart': 112, 'temp': 38.5, 'spo2': 91}
-2026-03-24 10:30:51,458 - __main__ - INFO - Status: ALERT
+**Windows Command Prompt:**
+```batch
+START_ALL.bat
 ```
 
-**The application will:**
-- ✅ Generate sensor data every 5 seconds
-- ✅ Detect anomalies (when vitals exceed thresholds)
-- ✅ Log to CSV
-- ✅ Send alerts to blockchain
+**Linux/macOS:**
+```bash
+./START_ALL.sh
+```
 
-**To stop:** Press `Ctrl + C`
+This single command will:
+- ✅ Start FastAPI backend on http://localhost:8000
+- ✅ Wait for it to be ready
+- ✅ Start Next.js frontend on http://localhost:3000
+- ✅ Show you the URLs to access
+
+See [STARTUP_GUIDE.md](../STARTUP_GUIDE.md) for more startup options.
 
 ---
 
-## Accessing the Dashboard
+### Alternative: Manual Startup (3 Terminals)
 
-### Terminal 3: Start Dashboard (Optional but Recommended)
+If you prefer to manage startup manually:
 
-Open a **NEW PowerShell terminal**:
+**You need 3 terminal windows:**
+1. **Terminal 1**: Ganache (blockchain) - KEEP RUNNING
+2. **Terminal 2**: FastAPI Backend (http://localhost:8000)
+3. **Terminal 3**: Next.js Frontend (http://localhost:3000)
+
+#### Terminal 2: Start Backend
 
 ```powershell
-# Navigate to project
-cd C:\Users\YourUsername\SecureMedi
-
-# Activate venv
+# From project directory with venv activated
 .\venv\Scripts\Activate.ps1
-
-# Start dashboard
-streamlit run dashboard/app.py
+python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 **Expected Output:**
 ```
-  You can now view your Streamlit app in your browser.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+INFO:     Application startup complete
+```
 
-  Local URL: http://localhost:8501
-  Network URL: http://192.168.x.x:8501
+#### Terminal 3: Start Frontend
+
+```powershell
+cd frontend
+npm run dev
+```
+
+**Expected Output:**
+```
+> next dev
+ready - started server on 0.0.0.0:3000, url: http://localhost:3000
+```
+
+---
+
+## Accessing the Application
+
+### Web Dashboard
+
+Once both services are running:
+
+- **Frontend App:** http://localhost:3000
+- **Backend API:** http://localhost:8000
+- **API Documentation:** http://localhost:8000/docs (interactive Swagger UI)
+
+### Optional: Legacy Streamlit Dashboard
+
+If you want to use the old Streamlit dashboard instead of the new Next.js frontend:
+
+```powershell
+# In a new terminal
+.\venv\Scripts\Activate.ps1
+streamlit run dashboard/app.py
+```
+
+Access at: http://localhost:8501
 
   For better performance, install Python 3.11.
 ```

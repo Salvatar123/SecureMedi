@@ -1,35 +1,64 @@
 globalThis.__BUILD_MANIFEST = {
   "pages": {
     "/": [
+      "static/chunks/[root-of-the-server]__00j5~p.._.js",
       "static/chunks/0nn8_next_dist_compiled_01u8ui4._.js",
-      "static/chunks/0nn8_next_dist_shared_lib_0bh7i7u._.js",
-      "static/chunks/0nn8_next_dist_client_0imd4lb._.js",
+      "static/chunks/0nn8_next_dist_shared_lib_0gp1-49._.js",
+      "static/chunks/0nn8_next_dist_client_0sauqwq._.js",
       "static/chunks/0nn8_next_dist_0kolcqo._.js",
-      "static/chunks/0nn8_next_router_0g9oyko.js",
-      "static/chunks/0nn8_react_12f.r.-._.js",
+      "static/chunks/0nn8_next_0wl3s6p._.js",
+      "static/chunks/0nn8_react_0wprwpi._.js",
       "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
       "static/chunks/0nn8_react-dom_083q-7l._.js",
       "static/chunks/0nn8_0~y0yf1._.js",
-      "static/chunks/[root-of-the-server]__00j5~p.._.js",
       "static/chunks/SecureMedi_frontend_pages_index_07xvfw~._.js",
-      "static/chunks/turbopack-SecureMedi_frontend_pages_index_09.wwuj._.js"
+      "static/chunks/turbopack-SecureMedi_frontend_pages_index_0r-su~-._.js"
     ],
     "/_app": [
-      "static/chunks/0nn8_next_dist_compiled_01u8ui4._.js",
+      "static/chunks/0nn8_next_dist_compiled_0sqv5-s._.js",
       "static/chunks/0nn8_next_dist_shared_lib_0bh7i7u._.js",
       "static/chunks/0nn8_next_dist_client_0imd4lb._.js",
       "static/chunks/0nn8_next_dist_0kolcqo._.js",
       "static/chunks/0nn8_react_0wprwpi._.js",
       "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
       "static/chunks/0nn8_react-dom_083q-7l._.js",
+      "static/chunks/0nn8_axios_lib_0_88efu._.js",
       "static/chunks/0nn8_0ma.7.t._.js",
-      "static/chunks/[root-of-the-server]__07bt~x~._.js",
+      "static/chunks/[root-of-the-server]__0n90mue._.js",
       "static/chunks/SecureMedi_frontend_styles_globals_0.39s3i.css",
       "static/chunks/SecureMedi_frontend_pages__app_07xvfw~._.js",
-      "static/chunks/turbopack-SecureMedi_frontend_pages__app_063jhss._.js"
+      "static/chunks/turbopack-SecureMedi_frontend_pages__app_0-whjgy._.js"
+    ],
+    "/_error": [
+      "static/chunks/0nn8_next_dist_compiled_01u8ui4._.js",
+      "static/chunks/0nn8_next_dist_shared_lib_0ppqczv._.js",
+      "static/chunks/0nn8_next_dist_client_0imd4lb._.js",
+      "static/chunks/0nn8_next_dist_07pf-y2._.js",
+      "static/chunks/[next]_entry_page-loader_ts_10dw3md._.js",
+      "static/chunks/0nn8_react_12f.r.-._.js",
+      "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
+      "static/chunks/0nn8_react-dom_083q-7l._.js",
+      "static/chunks/0nn8_0~y0yf1._.js",
+      "static/chunks/[root-of-the-server]__12zx6~l._.js",
+      "static/chunks/SecureMedi_frontend_pages__error_07xvfw~._.js",
+      "static/chunks/turbopack-SecureMedi_frontend_pages__error_0lxmqid._.js"
+    ],
+    "/admin": [
+      "static/chunks/[root-of-the-server]__0z2dlhb._.js",
+      "static/chunks/0nn8_next_dist_compiled_0sqv5-s._.js",
+      "static/chunks/0nn8_next_dist_shared_lib_0bh7i7u._.js",
+      "static/chunks/0nn8_next_dist_client_0imd4lb._.js",
+      "static/chunks/0nn8_next_dist_0kolcqo._.js",
+      "static/chunks/0nn8_react_0wprwpi._.js",
+      "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
+      "static/chunks/0nn8_react-dom_083q-7l._.js",
+      "static/chunks/0nn8_axios_lib_0_88efu._.js",
+      "static/chunks/0nn8_0zgu~hk._.js",
+      "static/chunks/SecureMedi_frontend_pages_admin_07xvfw~._.js",
+      "static/chunks/turbopack-SecureMedi_frontend_pages_admin_0-n85v8._.js"
     ],
     "/dashboard": [
-      "static/chunks/[root-of-the-server]__01p6-ug._.js",
+      "static/chunks/[root-of-the-server]__0p4m3rw._.js",
       "static/chunks/0nn8_next_dist_compiled_0sqv5-s._.js",
       "static/chunks/0nn8_next_dist_shared_lib_0gp1-49._.js",
       "static/chunks/0nn8_next_dist_client_0sauqwq._.js",
@@ -38,12 +67,12 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/0nn8_react_0wprwpi._.js",
       "static/chunks/0nn8_react-dom_cjs_react-dom_development_10.ny38.js",
       "static/chunks/0nn8_react-dom_083q-7l._.js",
+      "static/chunks/0nn8_axios_lib_0_88efu._.js",
       "static/chunks/0nn8_lodash_11l3rzg._.js",
       "static/chunks/0nn8_recharts_es6_00woety._.js",
-      "static/chunks/0nn8_axios_lib_0_88efu._.js",
-      "static/chunks/0nn8_0fsy9ha._.js",
+      "static/chunks/0nn8_0c_ngmu._.js",
       "static/chunks/SecureMedi_frontend_pages_dashboard_07xvfw~._.js",
-      "static/chunks/turbopack-SecureMedi_frontend_pages_dashboard_0bd.n.u._.js"
+      "static/chunks/turbopack-SecureMedi_frontend_pages_dashboard_07o.9xa._.js"
     ],
     "/login": [
       "static/chunks/0nn8_next_dist_compiled_0sqv5-s._.js",
@@ -56,9 +85,9 @@ globalThis.__BUILD_MANIFEST = {
       "static/chunks/0nn8_react-dom_083q-7l._.js",
       "static/chunks/0nn8_axios_lib_0_88efu._.js",
       "static/chunks/0nn8_0xci7lq._.js",
-      "static/chunks/[root-of-the-server]__118p9x_._.js",
+      "static/chunks/[root-of-the-server]__0ou-b7v._.js",
       "static/chunks/SecureMedi_frontend_pages_login_07xvfw~._.js",
-      "static/chunks/turbopack-SecureMedi_frontend_pages_login_0lyu8~-._.js"
+      "static/chunks/turbopack-SecureMedi_frontend_pages_login_0om~xkn._.js"
     ]
   },
   "devFiles": [],

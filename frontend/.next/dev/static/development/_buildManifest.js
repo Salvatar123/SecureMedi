@@ -2,6 +2,12 @@ self.__BUILD_MANIFEST = {
   "/": [
     "static/chunks/pages/index.js"
   ],
+  "/_error": [
+    "static/chunks/pages/_error.js"
+  ],
+  "/admin": [
+    "static/chunks/pages/admin.js"
+  ],
   "/dashboard": [
     "static/chunks/pages/dashboard.js"
   ],
@@ -17,7 +23,10 @@ self.__BUILD_MANIFEST = {
     "/",
     "/_app",
     "/_error",
+    "/admin",
     "/dashboard",
-    "/login"
+    "/error",
+    "/login",
+    "/request-access"
   ]
 };self.__BUILD_MANIFEST_CB && self.__BUILD_MANIFEST_CB()
