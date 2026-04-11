@@ -15,15 +15,43 @@ logger = logging.getLogger(__name__)
 class WalletService:
     """Service for wallet generation and management"""
 
-    # This is the standard deterministic mnemonic used by ganache-cli --deterministic.
-    DEFAULT_GANACHE_MNEMONIC = "myth like bonus scare over problem client lizard pioneer submit female collect"
+    # Keep in sync with START_GANACHE.bat and docs.
+    DEFAULT_GANACHE_MNEMONIC = "test test test test test test test test test test test junk"
 
     def __init__(self):
         """Initialize wallet service"""
         self.settings = get_settings()
         self.ganache_accounts = self._fetch_ganache_accounts()
         self.assigned_wallets = self._load_assigned_wallets()
-        self.next_account_index = len(self.assigned_wallets)
+        self.next_account_index = self._calculate_next_account_index()
+
+    def _calculate_next_account_index(self) -> int:
+        """Return the next unused Ganache account index based on stored assignments."""
+        max_index = -1
+        for record in self.assigned_wallets.values():
+            idx = record.get("account_index")
+            if isinstance(idx, int):
+                max_index = max(max_index, idx)
+        return max_index + 1
+
+    def _used_account_indices(self) -> set[int]:
+        """Return the set of assigned account indices."""
+        used: set[int] = set()
+        for record in self.assigned_wallets.values():
+            idx = record.get("account_index")
+            if isinstance(idx, int):
+                used.add(idx)
+        return used
+
+    def _next_free_account_index(self) -> Optional[int]:
+        """Return the first free account index from current Ganache accounts."""
+        if not self.ganache_accounts:
+            return None
+        used = self._used_account_indices()
+        for idx in range(len(self.ganache_accounts)):
+            if idx not in used:
+                return idx
+        return None
 
     def _fetch_ganache_accounts(self) -> List[Dict]:
         """Fetch accounts from running Ganache instance"""
@@ -158,20 +186,21 @@ class WalletService:
             logger.error(error)
             return None, None, error
 
-        if self.next_account_index >= len(self.ganache_accounts):
+        next_account_index = self._next_free_account_index()
+        if next_account_index is None:
             error = f"No more Ganache accounts available. Max {len(self.ganache_accounts)} users."
             logger.error(error)
             return None, None, error
 
-        account = self.ganache_accounts[self.next_account_index]
+        account = self.ganache_accounts[next_account_index]
         wallet_address = account["address"]
 
         private_key = self._derive_private_key_from_mnemonic(
             self.DEFAULT_GANACHE_MNEMONIC,
-            self.next_account_index,
+            next_account_index,
         )
         if not private_key:
-            error = f"Could not derive private key for account {self.next_account_index}"
+            error = f"Could not derive private key for account {next_account_index}"
             logger.error(error)
             return None, None, error
 
@@ -179,14 +208,50 @@ class WalletService:
             "address": wallet_address,
             "private_key": private_key,
             "user_type": user_type,
-            "account_index": self.next_account_index,
+            "account_index": next_account_index,
             "assigned_at": datetime.utcnow().isoformat(),
         }
-        self.next_account_index += 1
+        self.next_account_index = self._calculate_next_account_index()
         self._save_assigned_wallets()
 
         logger.info(f"Generated wallet for {user_type} {user_id}: {wallet_address}")
         return wallet_address, private_key, None
+
+    def unassign_wallet(
+        self,
+        user_id: Optional[str] = None,
+        address: Optional[str] = None,
+        user_type: Optional[str] = None,
+    ) -> bool:
+        """Remove an assigned wallet mapping by user ID or wallet address."""
+        target_key: Optional[str] = None
+
+        if user_id and user_id in self.assigned_wallets:
+            record = self.assigned_wallets[user_id]
+            if user_type is None or record.get("user_type") == user_type:
+                target_key = user_id
+
+        if target_key is None and address:
+            normalized = address.lower()
+            for key, record in self.assigned_wallets.items():
+                if (record.get("address") or "").lower() != normalized:
+                    continue
+                if user_type and record.get("user_type") != user_type:
+                    continue
+                target_key = key
+                break
+
+        if target_key is None:
+            return False
+
+        removed = self.assigned_wallets.pop(target_key, None)
+        if removed is None:
+            return False
+
+        self.next_account_index = self._calculate_next_account_index()
+        self._save_assigned_wallets()
+        logger.info(f"Unassigned wallet for {target_key}")
+        return True
 
     def get_wallet(self, user_id: str) -> Optional[Dict]:
         """Get assigned wallet for a user"""
@@ -198,7 +263,7 @@ class WalletService:
 
     def get_available_count(self) -> int:
         """Get number of available accounts"""
-        return max(0, len(self.ganache_accounts) - self.next_account_index)
+        return max(0, len(self.ganache_accounts) - len(self._used_account_indices()))
 
     def get_total_count(self) -> int:
         """Get total number of Ganache accounts"""

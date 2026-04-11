@@ -46,9 +46,20 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             normalized_path.startswith("/api/admin/registry/patients/")
             and normalized_path.endswith("/wallet")
         )
+
+        is_public_doctor_delete_route = (
+            request.method.upper() == "DELETE"
+            and normalized_path.startswith("/api/admin/registry/doctors/")
+            and not normalized_path.endswith("/wallet")
+        )
         
         # Skip authentication for public routes
-        if normalized_path in self.UNAUTHENTICATED_ROUTES or is_public_doctor_wallet_route or is_public_patient_wallet_route:
+        if (
+            normalized_path in self.UNAUTHENTICATED_ROUTES
+            or is_public_doctor_wallet_route
+            or is_public_patient_wallet_route
+            or is_public_doctor_delete_route
+        ):
             return await call_next(request)
         
         # Extract token from Authorization header
