@@ -280,7 +280,7 @@ class TestBlockchainServiceAccessLogs:
                 service.contract = mock_contract
 
                 patient_id = "P001"
-                private_key = "0x4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51"
+                private_key = "0x1111111111111111111111111111111111111111111111111111111111111111"
 
                 doctors, times, emergencies = service.get_access_logs_as_patient(
                     patient_id, private_key

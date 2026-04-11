@@ -77,7 +77,7 @@ class TestValidatePrivateKey:
     def test_private_key_missing_0x_prefix(self):
         """Test private key without 0x prefix fails."""
         assert not validate_private_key(
-            "4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51"
+            "1111111111111111111111111111111111111111111111111111111111111111"
         )
 
     def test_private_key_too_short(self):

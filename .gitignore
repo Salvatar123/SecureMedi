@@ -113,6 +113,8 @@ frontend/null
 # Generated keys
 config/jwt_private_key.pem
 config/jwt_public_key.pem
+backend/config/jwt_private_key.pem
+backend/config/jwt_public_key.pem
 
 # Root lockfile (frontend has its own lockfile)
 package-lock.json

@@ -26,7 +26,7 @@ def test_settings():
             "ENVIRONMENT": "testing",
             "GANACHE_URL": "http://127.0.0.1:7545",
             "CONTRACT_ADDRESS": "0x9feb5BA604B3C467Cd07Ecd20a9d8d601a2D98Fd",
-            "PRIVATE_KEY": "0x4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51",
+            "PRIVATE_KEY": "0x1111111111111111111111111111111111111111111111111111111111111111",
             "ENABLE_BLOCKCHAIN": "false",
             "ENABLE_LOCAL_LOGGING": "true",
             "LOG_FILE": "logs/test_data.csv",
@@ -196,7 +196,7 @@ def invalid_addresses():
 def valid_private_keys():
     """Collection of valid private keys."""
     return [
-        "0x4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51",
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
         "0x0000000000000000000000000000000000000000000000000000000000000001",
     ]
 
@@ -205,9 +205,9 @@ def valid_private_keys():
 def invalid_private_keys():
     """Collection of invalid private keys."""
     return [
-        "4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c51",  # Missing 0x
-        "0x4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c5",  # Too short
-        "0x4f531878d488cb41e18550a0ac6fd76e16531616fef79972b098bc00548d4c511",  # Too long
+        "1111111111111111111111111111111111111111111111111111111111111111",  # Missing 0x
+        "0x111111111111111111111111111111111111111111111111111111111111111",  # Too short
+        "0x11111111111111111111111111111111111111111111111111111111111111111",  # Too long
         "0xZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",  # Invalid hex
         "",
     ]
