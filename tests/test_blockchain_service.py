@@ -27,21 +27,26 @@ class TestBlockchainServiceInitialization:
 
     @patch("services.blockchain_service.Web3")
     def test_initialization_connection_error(self, mock_web3_class, mock_web3):
-        """Test initialization fails when blockchain is unreachable."""
+        """Test initialization degrades gracefully when blockchain is unreachable."""
         mock_web3.is_connected.return_value = False
         mock_web3_class.return_value = mock_web3
 
-        with pytest.raises(ConnectionError):
-            BlockchainService()
+        service = BlockchainService()
+
+        assert service.contract is None
+        assert service.account is None
 
     @patch("services.blockchain_service.Web3")
     def test_initialization_missing_abi_file(self, mock_web3_class, mock_web3):
-        """Test initialization fails when ABI file is missing."""
+        """Test initialization degrades gracefully when ABI file is missing."""
+        mock_web3.is_connected.return_value = True
+        mock_web3.eth.accounts = ["0x123"]
         mock_web3_class.return_value = mock_web3
 
         with patch("builtins.open", side_effect=FileNotFoundError):
-            with pytest.raises(FileNotFoundError):
-                BlockchainService()
+            service = BlockchainService()
+
+            assert service.contract is None
 
 
 class TestBlockchainServiceKeyGeneration:
