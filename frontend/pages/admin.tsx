@@ -63,23 +63,10 @@ interface PatientWalletDetails {
   message?: string;
 }
 
-interface EmergencySession {
-  session_id: string;
-  doctor_address: string;
-  patient_id: string;
-  status: 'PENDING' | 'ACTIVE' | 'EXPIRED' | 'CLOSED' | 'REJECTED';
-  severity?: 'INFO' | 'WARNING' | 'CRITICAL';
-  reason?: string;
-  requested_at?: string;
-  activated_at?: string;
-  expires_at?: string;
-  closed_at?: string;
-}
-
 export default function AdminDashboard() {
   const { isAuthenticated, userRole } = useAuthStore();
   const isAdminRole = String(userRole || '').toUpperCase() === 'ADMIN';
-  const [activeTab, setActiveTab] = useState<'doctors' | 'patients' | 'emergency'>('doctors');
+  const [activeTab, setActiveTab] = useState<'doctors' | 'patients'>('doctors');
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(false);
@@ -98,9 +85,6 @@ export default function AdminDashboard() {
   const [selectedPatientForAssign, setSelectedPatientForAssign] = useState<Patient | null>(null);
   const [selectedDoctorIdForAssign, setSelectedDoctorIdForAssign] = useState('');
   const [assignLoading, setAssignLoading] = useState(false);
-  const [emergencySessions, setEmergencySessions] = useState<EmergencySession[]>([]);
-  const [emergencyLoading, setEmergencyLoading] = useState(false);
-  const [emergencyError, setEmergencyError] = useState<string | null>(null);
 
   const client = getApiClient();
 
@@ -141,62 +125,9 @@ export default function AdminDashboard() {
     toast.success(`${label} copied to clipboard`);
   };
 
-  const fetchEmergencySessions = async () => {
-    if (!isAuthenticated || !isAdminRole) {
-      setEmergencySessions([]);
-      setEmergencyError('Only ADMIN users can view emergency history.');
-      return;
-    }
-
-    setEmergencyLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('limit', '1000');
-      const response = await client.get(`/api/admin/emergency/sessions?${params.toString()}`);
-      if (response.data?.success) {
-        setEmergencySessions(response.data.data || []);
-        setEmergencyError(null);
-      } else {
-        const message = response.data?.message || 'Failed to load emergency sessions';
-        setEmergencyError(message);
-        toast.error(message);
-      }
-    } catch (error: any) {
-      const message = error?.response?.data?.detail || error?.message || 'Error loading emergency sessions';
-      setEmergencyError(message);
-      toast.error(message);
-    } finally {
-      setEmergencyLoading(false);
-    }
-  };
-
   useEffect(() => {
     fetchAvailableWallets();
   }, []);
-
-  useEffect(() => {
-    if (activeTab !== 'emergency') {
-      return;
-    }
-
-    if (isAuthenticated && isAdminRole) {
-      fetchEmergencySessions();
-    } else {
-      setEmergencySessions([]);
-    }
-  }, [activeTab, isAuthenticated, isAdminRole]);
-
-  useEffect(() => {
-    if (activeTab !== 'emergency' || !isAuthenticated || !isAdminRole) {
-      return;
-    }
-
-    const intervalId = setInterval(() => {
-      fetchEmergencySessions();
-    }, 5000);
-
-    return () => clearInterval(intervalId);
-  }, [activeTab, isAuthenticated, isAdminRole]);
 
   const fetchDoctors = async () => {
     setLoading(true);
@@ -668,16 +599,6 @@ export default function AdminDashboard() {
           >
             Patients
           </button>
-          <button
-            onClick={() => setActiveTab('emergency')}
-            className={`px-6 py-3 font-medium border-b-2 transition ${
-              activeTab === 'emergency'
-                ? 'text-red-600 border-red-600'
-                : 'text-gray-600 border-transparent hover:text-gray-800'
-            }`}
-          >
-            Emergency Access
-          </button>
         </div>
 
         {activeTab === 'doctors' ? (
@@ -743,16 +664,6 @@ export default function AdminDashboard() {
               setFormData({});
             }}
           />
-        ) : activeTab === 'emergency' ? (
-          <EmergencyAccessSection
-            isAuthenticated={isAuthenticated}
-            userRole={userRole}
-            isAdminRole={isAdminRole}
-            emergencyLoading={emergencyLoading}
-            emergencyError={emergencyError}
-            onRefresh={fetchEmergencySessions}
-            emergencySessions={emergencySessions}
-          />
         ) : null}
 
         {isWalletModalOpen && (
@@ -793,99 +704,6 @@ export default function AdminDashboard() {
               setSelectedDoctorIdForAssign('');
             }}
           />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function EmergencyAccessSection({
-  isAuthenticated,
-  userRole,
-  isAdminRole,
-  emergencyLoading,
-  emergencyError,
-  onRefresh,
-  emergencySessions,
-}: any) {
-  const sortedSessions = [...emergencySessions].sort((a: EmergencySession, b: EmergencySession) => {
-    const aTime = new Date(a.closed_at || a.activated_at || a.requested_at || 0).getTime();
-    const bTime = new Date(b.closed_at || b.activated_at || b.requested_at || 0).getTime();
-    return bTime - aTime;
-  });
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white border border-gray-200 rounded-lg p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Emergency Access History</h2>
-            <p className="text-sm text-gray-600">Track which doctor accessed which patient report and when.</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={onRefresh}
-              className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 border border-gray-300 hover:bg-gray-200"
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-
-        {!isAuthenticated || !isAdminRole ? (
-          <p className="text-sm text-gray-600">Login as an ADMIN account to view emergency access history. Current role: {userRole || 'UNKNOWN'}</p>
-        ) : emergencyError ? (
-          <p className="text-sm text-red-600">Failed to load emergency history: {emergencyError}</p>
-        ) : emergencyLoading ? (
-          <p className="text-sm text-gray-600">Loading emergency access history...</p>
-        ) : sortedSessions.length === 0 ? (
-          <p className="text-sm text-gray-600">No emergency access history found.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-600">
-                  <th className="px-3 py-2">Session</th>
-                  <th className="px-3 py-2">Access Type</th>
-                  <th className="px-3 py-2">Doctor</th>
-                  <th className="px-3 py-2">Patient</th>
-                  <th className="px-3 py-2">Accessed At</th>
-                  <th className="px-3 py-2">Ended At</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedSessions.map((session: EmergencySession) => {
-                  const statusColors: { [key: string]: string } = {
-                    ACTIVE: 'bg-red-100 text-red-800',
-                    PENDING: 'bg-yellow-100 text-yellow-800',
-                    EXPIRED: 'bg-gray-100 text-gray-800',
-                    CLOSED: 'bg-blue-100 text-blue-800',
-                    REJECTED: 'bg-orange-100 text-orange-800',
-                  };
-                  const statusColor = statusColors[session.status] || 'bg-gray-100 text-gray-800';
-
-                  return (
-                    <tr key={session.session_id} className="border-b border-gray-100 align-top">
-                      <td className="px-3 py-2 font-mono text-xs">{session.session_id.slice(0, 16)}...</td>
-                      <td className="px-3 py-2">
-                        <span className="px-2 py-1 rounded text-xs font-semibold bg-red-100 text-red-800">EMERGENCY</span>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">{session.doctor_address || '-'}</td>
-                      <td className="px-3 py-2">{session.patient_id || '-'}</td>
-                      <td className="px-3 py-2">{session.activated_at ? new Date(session.activated_at).toLocaleString() : session.requested_at ? new Date(session.requested_at).toLocaleString() : '-'}</td>
-                      <td className="px-3 py-2">{session.closed_at ? new Date(session.closed_at).toLocaleString() : '-'}</td>
-                      <td className="px-3 py-2">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${statusColor}`}>{session.status}</span>
-                      </td>
-                      <td className="px-3 py-2 max-w-sm truncate" title={session.reason || ''}>{session.reason || '-'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
     </div>
