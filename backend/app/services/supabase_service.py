@@ -201,6 +201,19 @@ class SupabaseService:
         except Exception as e:
             logger.error(f"Error getting patient: {e}")
             return None
+
+    def get_patient_by_db_id(self, db_id: str) -> Optional[Dict[str, Any]]:
+        """Get patient by database UUID id."""
+        try:
+            response = self.client.table(self.patients_table) \
+                .select("*") \
+                .eq("id", db_id) \
+                .limit(1) \
+                .execute()
+            return response.data[0] if response.data else None
+        except Exception as e:
+            logger.error(f"Error getting patient by db id: {e}")
+            return None
     
     def get_all_patients(self, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
         """Get all patients with pagination"""

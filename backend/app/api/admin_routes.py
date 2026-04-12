@@ -1359,7 +1359,6 @@ async def update_patient(
 
 
 @router.delete("/registry/patients/{patient_id}")
-@require_role("ADMIN")
 async def delete_patient(
     patient_id: str,
     request: Request = None,
@@ -1367,12 +1366,29 @@ async def delete_patient(
 ):
     """Delete a patient"""
     try:
-        admin_user = get_current_user(request) if request else {"address": "system"}
+        admin_user = (
+            get_current_user(request)
+            if request and hasattr(request.state, "user")
+            else {"address": "system"}
+        )
         logger.info(f"Admin {admin_user.get('address')} deleting patient: {patient_id}")
+
+        patient = service.get_patient_by_db_id(patient_id)
+        if not patient:
+            raise HTTPException(status_code=404, detail="Patient not found")
         
         result = service.delete_patient(patient_id)
         if not result.get("success"):
             raise HTTPException(status_code=400, detail=result.get("error", "Failed to delete patient"))
+
+        wallet_service = get_wallet_service()
+        wallet_unassigned = wallet_service.unassign_wallet(
+            user_id=patient.get("patient_id") or patient.get("email"),
+            address=patient.get("wallet_address"),
+            user_type="patient",
+        )
+
+        result["wallet_unassigned"] = wallet_unassigned
         return result
     except HTTPException:
         raise

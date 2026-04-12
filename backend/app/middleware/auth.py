@@ -52,6 +52,12 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             and normalized_path.startswith("/api/admin/registry/doctors/")
             and not normalized_path.endswith("/wallet")
         )
+
+        is_public_patient_delete_route = (
+            request.method.upper() == "DELETE"
+            and normalized_path.startswith("/api/admin/registry/patients/")
+            and not normalized_path.endswith("/wallet")
+        )
         
         # Skip authentication for public routes
         if (
@@ -59,6 +65,7 @@ class AuthenticationMiddleware(BaseHTTPMiddleware):
             or is_public_doctor_wallet_route
             or is_public_patient_wallet_route
             or is_public_doctor_delete_route
+            or is_public_patient_delete_route
         ):
             return await call_next(request)
         

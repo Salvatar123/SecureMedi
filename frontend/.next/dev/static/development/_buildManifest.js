@@ -5,6 +5,9 @@ self.__BUILD_MANIFEST = {
   "/admin": [
     "static/chunks/pages/admin.js"
   ],
+  "/dashboard": [
+    "static/chunks/pages/dashboard.js"
+  ],
   "/login": [
     "static/chunks/pages/login.js"
   ],

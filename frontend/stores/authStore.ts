@@ -88,9 +88,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Set user info and tokens after successful login
   setTokens: async (token: string, refreshToken: string, role: UserRole, address: string, name?: string) => {
     try {
-      const encKey = get().encryptionKey;
+      let encKey = get().encryptionKey;
+
+      // Recover key from in-memory secure storage if Zustand state was reset.
       if (!encKey) {
-        throw new Error('Encryption key not available');
+        const recovered = getEncryptionKey();
+        if (recovered) {
+          encKey = recovered;
+          set({ encryptionKey: recovered, encryptionAvailable: true });
+        }
+      }
+
+      // Last-resort key generation to avoid login failure on initialization races.
+      if (!encKey) {
+        if (!isCryptoAvailable()) {
+          throw new Error('Encryption key not available');
+        }
+        encKey = await generateEncryptionKey();
+        setEncryptionKey(encKey);
+        set({ encryptionKey: encKey, encryptionAvailable: true });
       }
       
       // Store tokens securely
@@ -153,9 +169,23 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Update tokens on refresh
   refreshTokens: async (newToken: string, newRefreshToken: string) => {
     try {
-      const encKey = get().encryptionKey;
+      let encKey = get().encryptionKey;
+
       if (!encKey) {
-        throw new Error('Encryption key not available');
+        const recovered = getEncryptionKey();
+        if (recovered) {
+          encKey = recovered;
+          set({ encryptionKey: recovered, encryptionAvailable: true });
+        }
+      }
+
+      if (!encKey) {
+        if (!isCryptoAvailable()) {
+          throw new Error('Encryption key not available');
+        }
+        encKey = await generateEncryptionKey();
+        setEncryptionKey(encKey);
+        set({ encryptionKey: encKey, encryptionAvailable: true });
       }
       
       await storeAccessToken(newToken, encKey);

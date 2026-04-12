@@ -304,6 +304,7 @@ export default function AdminDashboard() {
       if (response.data.success) {
         toast.success('Doctor deleted successfully');
         fetchDoctors();
+        fetchAvailableWallets();
       } else {
         toast.error(response.data.error || 'Failed to delete doctor');
       }
@@ -478,6 +479,7 @@ export default function AdminDashboard() {
       if (response.data.success) {
         toast.success('Patient deleted successfully');
         fetchPatients();
+        fetchAvailableWallets();
       } else {
         toast.error(response.data.error || 'Failed to delete patient');
       }
@@ -1538,7 +1540,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
               disabled={!!patient}
               value={formData.patient_id || ''}
               onChange={(e) => onFormChange({ ...formData, patient_id: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:text-gray-600"
             />
           </div>
           <div>
@@ -1547,7 +1549,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
               type="text"
               value={formData.name || ''}
               onChange={(e) => onFormChange({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
@@ -1556,7 +1558,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
               type="email"
               value={formData.email || ''}
               onChange={(e) => onFormChange({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           {patient && (
@@ -1577,7 +1579,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
                 type="date"
                 value={formData.date_of_birth || ''}
                 onChange={(e) => onFormChange({ ...formData, date_of_birth: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
             <div>
@@ -1586,7 +1588,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
                 type="text"
                 value={formData.emergency_contact || ''}
                 onChange={(e) => onFormChange({ ...formData, emergency_contact: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
           </div>
@@ -1596,7 +1598,7 @@ function PatientForm({ patient, formData, onFormChange, onSubmit, onClose }: any
               <select
                 value={formData.status || 'active'}
                 onChange={(e) => onFormChange({ ...formData, status: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg text-black focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>

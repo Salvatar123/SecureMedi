@@ -116,7 +116,13 @@ class ApiClient {
       const response = await this.client.post<ApiResponse>("/api/auth/logout");
       return response.data;
     } catch (error) {
-      throw this.handleError(error);
+      // Logout should be fail-safe on the client: clear local auth even if backend is unreachable.
+      const handled = this.handleError(error);
+      console.warn("Logout API unreachable, proceeding with local logout:", handled.message);
+      return {
+        success: true,
+        message: "Logged out locally",
+      } as ApiResponse;
     }
   }
 
