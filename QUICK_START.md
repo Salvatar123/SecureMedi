@@ -1,115 +1,51 @@
-# 🚀 Quick Reference - Starting SecureMedi
+# Quick Reference - Starting SecureMedi
 
-## One Command Startup
+## Fast Path (Windows)
 
-### Windows PowerShell
+### Terminal 1: Ganache
+
 ```powershell
-.\START_ALL.ps1
+Set-Location "c:\Users\Arnav Anand\SecureMedi"
+npx ganache --port 7545 --mnemonic "test test test test test test test test test test test junk" --accounts 10
 ```
 
-### Windows Command Prompt
-```batch
-START_ALL.bat
+### Terminal 2: Backend
+
+```powershell
+Set-Location "c:\Users\Arnav Anand\SecureMedi"
+.\.venv\Scripts\python.exe -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-### Linux / macOS
-```bash
-./START_ALL.sh
-```
+### Terminal 3: Frontend
 
----
-
-## What Happens
-
-```
-1. Backend starts on http://localhost:8000
-   ↓ (waits for it to be ready)
-2. Frontend starts on http://localhost:3000
-   ↓
-3. Both running! Ready to develop 🎉
-```
-
----
-
-## Services Running
-
-| Service | URL | Docs |
-|---------|-----|------|
-| **API** | http://localhost:8000 | [Swagger](http://localhost:8000/docs) |
-| **App** | http://localhost:3000 | - |
-
----
-
-## Common Commands
-
-| Task | Command |
-|------|---------|
-| **Start everything** | `.\START_ALL.ps1` |
-| **Just backend** | `.\START_ALL.ps1 -SkipFrontend` |
-| **Just frontend** | `.\START_ALL.ps1 -SkipBackend` |
-| **Stop services** | `Ctrl+C` in each window |
-| **Kill port 8000** | `Stop-Process -Id (Get-NetTCPConnection -LocalPort 8000 -State Listen).OwningProcess -Force` |
-| **Kill port 3000** | `Stop-Process -Id (Get-NetTCPConnection -LocalPort 3000 -State Listen).OwningProcess -Force` |
-
----
-
-## First Time Setup
-
-```bash
-# 1. Create virtual environment
-python -m venv .venv
-
-# 2. Activate it
-.venv\Scripts\Activate.ps1  # Windows
-source .venv/bin/activate    # Linux/Mac
-
-# 3. Install Python dependencies
-pip install -r requirements.txt
-
-# 4. Install frontend dependencies
-cd frontend
-npm install
-cd ..
-
-# 5. Now you can run
-.\START_ALL.ps1
-```
-
----
-
-## Manual Startup (If Scripts Fail)
-
-```bash
-# Terminal 1: Backend
-.venv\Scripts\Activate.ps1
-python -m uvicorn backend.app.main:app --port 8000 --reload
-
-# Terminal 2: Frontend
-cd frontend
+```powershell
+Set-Location "c:\Users\Arnav Anand\SecureMedi\frontend"
+if (-not (Test-Path .\node_modules)) { npm install }
 npm run dev
 ```
 
----
+## URLs
 
-## Troubleshooting
+- API: http://localhost:8000
+- API docs: http://localhost:8000/docs
+- App: http://localhost:3000
+- Ganache RPC: http://127.0.0.1:7545
 
-**"Port X already in use"**
-- Backend may still be running
-- Use Task Manager or `netstat` to find and kill it
-- Try different ports with `-BackendPort 8001` argument
+## Health Checks
 
-**"Module not found" errors**
-- Reinstall requirements: `pip install -r requirements.txt`
-- Clear pip cache: `pip cache purge`
+```powershell
+Invoke-WebRequest -UseBasicParsing http://localhost:8000/health/live
+Invoke-WebRequest -UseBasicParsing http://localhost:3000
+```
 
-**"npm ERR!" in frontend**
-- Clear npm cache: `npm cache clean --force`
-- Reinstall: `cd frontend && rm -rf node_modules && npm install`
+## Notes
 
----
+- `START_ALL.ps1`, `START_ALL.bat`, and `START_ALL.sh` are not in this repository.
+- Existing scripts you can still use:
+  - `START_GANACHE.bat`
+  - `START_BACKEND_WITH_GANACHE.ps1`
 
 ## More Help
 
-- 📖 [Full Startup Guide](STARTUP_GUIDE.md)
-- 📚 [Development Documentation](documentation/README.md)
-- 🔧 [Configuration Guide](documentation/LOCAL_SETUP.md)
+- [STARTUP_GUIDE.md](STARTUP_GUIDE.md)
+- [documentation/LOCAL_SETUP.md](documentation/LOCAL_SETUP.md)

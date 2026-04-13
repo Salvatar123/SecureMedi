@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: securemedi-backend
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health/live
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: ENABLE_BLOCKCHAIN
+        value: "false"
+      - key: ENABLE_LOCAL_LOGGING
+        value: "true"
+      - key: LOG_LEVEL
+        value: INFO
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: CORS_ALLOWED_ORIGIN_REGEX
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_KEY
+        sync: false
+      - key: ENABLE_SUPABASE
+        value: "true"

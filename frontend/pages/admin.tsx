@@ -195,8 +195,8 @@ export default function AdminDashboard() {
       } else {
         toast.error(response.data.error || 'Failed to add doctor');
       }
-    } catch (error) {
-      toast.error('Error adding doctor');
+    } catch (error: any) {
+      toast.error(error?.message || 'Error adding doctor');
       console.error(error);
     } finally {
       setLoading(false);
@@ -572,8 +572,16 @@ export default function AdminDashboard() {
         {availableWallets && (
           <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-sm text-blue-900">
-              <strong>Wallet Status:</strong> {availableWallets.available_count} of {availableWallets.total_accounts} accounts available
+              <strong>Wallet Status:</strong> Managed pool {availableWallets.assigned_count} in use, {availableWallets.available_count} of {availableWallets.total_accounts} available.
             </p>
+            {typeof availableWallets.db_in_use_wallet_count === 'number' && (
+              <p className="text-sm text-blue-900 mt-1">
+                Total user wallets in records: {availableWallets.db_in_use_wallet_count}
+                {typeof availableWallets.db_doctor_wallet_count === 'number' && typeof availableWallets.db_patient_wallet_count === 'number'
+                  ? ` (Doctors: ${availableWallets.db_doctor_wallet_count}, Patients: ${availableWallets.db_patient_wallet_count})`
+                  : ''}
+              </p>
+            )}
           </div>
         )}
 
@@ -834,6 +842,7 @@ function DoctorsSection({
           doctor={selectedItem}
           formData={formData}
           onFormChange={onFormChange}
+          loading={loading}
           onSubmit={onFormSubmit}
           onClose={onFormClose}
         />
@@ -1239,7 +1248,7 @@ function AssignDoctorModal({
 
 // ==================== DOCTOR FORM ====================
 
-function DoctorForm({ doctor, formData, onFormChange, onSubmit, onClose }: any) {
+function DoctorForm({ doctor, formData, onFormChange, loading, onSubmit, onClose }: any) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full">
@@ -1319,15 +1328,17 @@ function DoctorForm({ doctor, formData, onFormChange, onSubmit, onClose }: any) 
         <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">
           <button
             onClick={onClose}
+            disabled={loading}
             className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300"
           >
             Cancel
           </button>
           <button
             onClick={onSubmit}
-            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+            disabled={loading}
+            className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {doctor ? 'Update' : 'Add'} Doctor
+            {loading ? 'Saving...' : `${doctor ? 'Update' : 'Add'} Doctor`}
           </button>
         </div>
       </div>

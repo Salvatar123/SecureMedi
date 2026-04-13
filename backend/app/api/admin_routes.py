@@ -2,6 +2,7 @@
 
 import logging
 import json
+from uuid import uuid4
 from fastapi import APIRouter, HTTPException, status, Request, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -27,6 +28,70 @@ except ModuleNotFoundError:
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+
+
+def _is_duplicate_doctor_wallet_error(error_text: str) -> bool:
+    """Return True when the error indicates a duplicate doctors.wallet_address constraint violation."""
+    lowered = (error_text or "").lower()
+    return (
+        "doctors_wallet_address_key" in lowered
+        or ("key (wallet_address)" in lowered and "already exists" in lowered)
+        or "code': '23505" in lowered
+        or 'code": "23505' in lowered
+    )
+
+
+def _unassign_wallet_by_address_all(wallet_service, address: Optional[str], user_type: str) -> int:
+    """Remove all wallet assignment records that match an address and user type."""
+    if not address:
+        return 0
+
+    removed = 0
+    while wallet_service.unassign_wallet(address=address, user_type=user_type):
+        removed += 1
+    return removed
+
+
+def _reconcile_orphan_wallet_assignments(wallet_service) -> int:
+    """Remove wallet assignments that no longer map to existing doctor/patient records."""
+    if not supabase_service:
+        return 0
+
+    try:
+        doctors_response = supabase_service.client.table("doctors").select("wallet_address").execute()
+        patients_response = supabase_service.client.table("patients").select("wallet_address").execute()
+
+        valid_doctor_wallets = {
+            (row.get("wallet_address") or "").lower()
+            for row in (doctors_response.data or [])
+            if row.get("wallet_address")
+        }
+        valid_patient_wallets = {
+            (row.get("wallet_address") or "").lower()
+            for row in (patients_response.data or [])
+            if row.get("wallet_address")
+        }
+
+        removed = 0
+        assigned = wallet_service.list_assigned_wallets() or {}
+        for user_id, data in list(assigned.items()):
+            user_type = str(data.get("user_type") or "").lower()
+            address = (data.get("address") or "").lower()
+
+            if not address or user_type not in {"doctor", "patient"}:
+                continue
+
+            if user_type == "doctor" and address not in valid_doctor_wallets:
+                if wallet_service.unassign_wallet(user_id=user_id, address=address, user_type="doctor"):
+                    removed += 1
+            elif user_type == "patient" and address not in valid_patient_wallets:
+                if wallet_service.unassign_wallet(user_id=user_id, address=address, user_type="patient"):
+                    removed += 1
+
+        return removed
+    except Exception as e:
+        logger.warning(f"Wallet reconciliation skipped due to error: {e}")
+        return 0
 
 
 class UserRegisterRequest(BaseModel):
@@ -516,15 +581,45 @@ async def get_available_wallets(request: Request = None):
     """Get available Ganache accounts (Public endpoint for testing)"""
     try:
         wallet_service = get_wallet_service()
+        orphan_removed_count = _reconcile_orphan_wallet_assignments(wallet_service)
         assigned = wallet_service.list_assigned_wallets()
         available = wallet_service.get_available_count()
         total = wallet_service.get_total_count()
+
+        db_doctor_wallet_count = 0
+        db_patient_wallet_count = 0
+        db_in_use_wallet_count = 0
+        if supabase_service:
+            try:
+                doctors_response = supabase_service.client.table("doctors").select("wallet_address").execute()
+                patients_response = supabase_service.client.table("patients").select("wallet_address").execute()
+
+                doctor_wallets = {
+                    (row.get("wallet_address") or "").lower()
+                    for row in (doctors_response.data or [])
+                    if row.get("wallet_address")
+                }
+                patient_wallets = {
+                    (row.get("wallet_address") or "").lower()
+                    for row in (patients_response.data or [])
+                    if row.get("wallet_address")
+                }
+
+                db_doctor_wallet_count = len(doctor_wallets)
+                db_patient_wallet_count = len(patient_wallets)
+                db_in_use_wallet_count = len(doctor_wallets.union(patient_wallets))
+            except Exception as e:
+                logger.warning(f"Unable to compute DB wallet usage counts: {e}")
         
         return {
             "success": True,
             "total_accounts": total,
             "assigned_count": len(assigned),
             "available_count": available,
+            "orphan_removed_count": orphan_removed_count,
+            "db_doctor_wallet_count": db_doctor_wallet_count,
+            "db_patient_wallet_count": db_patient_wallet_count,
+            "db_in_use_wallet_count": db_in_use_wallet_count,
             "assigned_wallets": [
                 {
                     "user_id": user_id,
@@ -815,29 +910,50 @@ async def create_doctor(
                 "message": "Supabase not configured. Doctor creation is unavailable until SUPABASE_URL and SUPABASE_KEY are set.",
             }
         
-        # Auto-generate wallet if not provided
-        if not wallet_address:
-            wallet_service = get_wallet_service()
-            # Use email as user_id for wallet assignment, or generate a unique ID
-            user_id = email or f"doctor_{name.replace(' ', '_')}"
-            wallet_address, private_key, error = wallet_service.generate_wallet(user_id, "doctor")
-            
-            if not wallet_address:
-                raise HTTPException(status_code=400, detail=f"Failed to generate wallet: {error}")
-        else:
-            private_key = None
-        
-        # First, add to Supabase
-        result = supabase_service.add_doctor(
-            wallet_address=wallet_address,
-            name=name,
-            email=email,
-            specialization=specialization,
-            hospital=hospital
-        )
-        
-        if not result.get("success"):
-            raise HTTPException(status_code=400, detail=result.get("error", "Failed to create doctor in database"))
+        # Auto-generate wallet if not provided. Retry a few times if generated wallet
+        # collides with an existing DB record.
+        private_key = None
+        generated_wallet = not wallet_address
+        wallet_service = get_wallet_service() if generated_wallet else None
+        seed_user_id = (email or f"doctor_{name.replace(' ', '_')}").strip() if generated_wallet else ""
+        wallet_user_id = seed_user_id
+        result = None
+
+        for attempt in range(5):
+            if generated_wallet:
+                wallet_address, private_key, error = wallet_service.generate_wallet(wallet_user_id, "doctor")
+                if not wallet_address:
+                    raise HTTPException(status_code=400, detail=f"Failed to generate wallet: {error}")
+
+                # Existing wallet assignment for same seed (for example repeated email) can
+                # re-use an old address. Move to a unique assignment key and retry.
+                if error and "already has a wallet assigned" in str(error).lower():
+                    wallet_user_id = f"{seed_user_id}_{uuid4().hex[:8]}"
+                    continue
+
+            result = supabase_service.add_doctor(
+                wallet_address=wallet_address,
+                name=name,
+                email=email,
+                specialization=specialization,
+                hospital=hospital
+            )
+
+            if result.get("success"):
+                break
+
+            error_text = result.get("error", "Failed to create doctor in database")
+            if generated_wallet and _is_duplicate_doctor_wallet_error(error_text):
+                wallet_service.unassign_wallet(user_id=wallet_user_id, user_type="doctor")
+                wallet_user_id = f"{seed_user_id}_{uuid4().hex[:8]}"
+                wallet_address = None
+                private_key = None
+                continue
+
+            raise HTTPException(status_code=400, detail=error_text)
+
+        if not result or not result.get("success"):
+            raise HTTPException(status_code=400, detail="Failed to create doctor after retrying wallet assignment")
         
         # Second, register on blockchain
         blockchain_error = None
@@ -947,8 +1063,14 @@ async def delete_doctor(
             address=doctor.get("wallet_address"),
             user_type="doctor",
         )
+        extra_unassigned = _unassign_wallet_by_address_all(
+            wallet_service,
+            doctor.get("wallet_address"),
+            "doctor",
+        )
 
         result["wallet_unassigned"] = wallet_unassigned
+        result["wallet_unassigned_count"] = (1 if wallet_unassigned else 0) + extra_unassigned
         return result
     except HTTPException:
         raise
